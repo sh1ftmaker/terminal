@@ -8,7 +8,7 @@
 //
 // See scripts/contexts/README.md and config/contexts.example.json.
 
-import { execFileSync, execFile, spawn as cpSpawn } from 'child_process';
+import { execFileSync, execFile, spawn as cpSpawn, type ExecFileSyncOptionsWithStringEncoding } from 'child_process';
 import { spawn as ptySpawn } from 'node-pty';
 import type { IPty } from 'node-pty';
 import type { Readable } from 'stream';
@@ -70,15 +70,22 @@ function buildTmuxArgs(ctx: Context, args: string[]): string[] {
   return ['-S', ctx.tmuxSocket, ...args];
 }
 
-// Run `tmux <args>` synchronously in a context. Throws on error.
+// Run `tmux <args>` synchronously in a context. Throws on error. stderr is
+// captured (not inherited): a context whose tmux server isn't running makes
+// tmux print "error connecting to <sock>" on every poll, which otherwise
+// floods the journal.
 export function runTmuxSync(ctx: Context, args: string[]): string {
   const tmuxArgs = buildTmuxArgs(ctx, args);
+  const opts: ExecFileSyncOptionsWithStringEncoding = { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] };
   if (ctx.user) {
-    return execFileSync('sudo', ['-n', '-u', ctx.user, '--', 'tmux', ...tmuxArgs], {
-      encoding: 'utf-8',
-    }).trim();
+    return execFileSync('sudo', ['-n', '-u', ctx.user, '--', 'tmux', ...tmuxArgs], opts).trim();
   }
-  return execFileSync('tmux', tmuxArgs, { encoding: 'utf-8' }).trim();
+  return execFileSync('tmux', tmuxArgs, opts).trim();
+}
+
+// A context with no tmux server has no socket; skip the sudo+tmux round trip.
+export function tmuxServerUp(ctx: Context): boolean {
+  return fs.existsSync(ctx.tmuxSocket);
 }
 
 // Async version returning exit code + stdout (never throws).
@@ -96,6 +103,7 @@ export function runTmuxAsync(ctx: Context, args: string[]): Promise<{ ok: boolea
 }
 
 export function listSessions(ctx: Context): SessionRow[] {
+  if (!tmuxServerUp(ctx)) return [];
   try {
     const out = runTmuxSync(ctx, [
       'list-sessions',
