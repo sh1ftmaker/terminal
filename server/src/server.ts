@@ -52,6 +52,7 @@ import {
 import { initCanvas, registerCanvasRoutes, canvasWss } from './canvas';
 import { registerVoiceRoutes } from './voice';
 import { registerProxyRoutes, localProxyMiddleware, handleLocalWsUpgrade } from './proxy';
+import { contentRange, parseByteRange } from './range';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -538,12 +539,14 @@ if (COORDINATOR_MODE && contexts) {
     }
 
     const fileSize = st.size;
-    const range = req.headers.range;
+    const range = parseByteRange(req.headers.range, fileSize);
+    if (range === 'unsatisfiable') {
+      res.setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.status(416).end();
+    }
     if (range) {
-      const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      const { start, end } = range;
+      res.setHeader('Content-Range', contentRange(range, fileSize));
       res.setHeader('Content-Length', end - start + 1);
       res.status(206);
       const stream = ctxOpenRead(ctx, filePath, { start, end });
@@ -947,16 +950,18 @@ app.get('/api/files/stream', (req, res) => {
     };
     const mimeType = mimeTypes[ext] || 'application/octet-stream';
     const fileSize = stats.size;
-    const range = req.headers.range;
+    const range = parseByteRange(req.headers.range, fileSize);
 
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Accept-Ranges', 'bytes');
 
+    if (range === 'unsatisfiable') {
+      res.setHeader('Content-Range', `bytes */${fileSize}`);
+      return res.status(416).end();
+    }
     if (range) {
-      const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(startStr, 10);
-      const end = endStr ? parseInt(endStr, 10) : fileSize - 1;
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      const { start, end } = range;
+      res.setHeader('Content-Range', contentRange(range, fileSize));
       res.setHeader('Content-Length', end - start + 1);
       res.status(206);
       fs.createReadStream(filePath, { start, end }).pipe(res);
