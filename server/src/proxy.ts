@@ -71,9 +71,14 @@ function rewriteLocalHtml(html: string, port: number): string {
   return html.replace(/(\s(?:src|href|action)\s*=\s*["'])\/(?!\/|lp\/)/gi, `$1/lp/${port}/`);
 }
 
+export interface LocalProxyOptions {
+  /** When set, only ports it approves are proxied; others answer 404. */
+  allowPort?: (port: number) => boolean;
+}
+
 // Mounted late (just before the SPA fallback) so it never shadows the app's
 // own routes; /lp/* paths and referred-from-/lp/* strays both land here.
-export function localProxyMiddleware(): RequestHandler {
+export function localProxyMiddleware(opts: LocalProxyOptions = {}): RequestHandler {
   return (req, res, next) => {
     let port: number;
     let targetPath: string;
@@ -88,6 +93,9 @@ export function localProxyMiddleware(): RequestHandler {
       targetPath = req.originalUrl;
     }
     if (!(port >= 1 && port <= 65535)) return res.status(400).send('local proxy: bad port');
+    if (opts.allowPort && !opts.allowPort(port)) {
+      return res.status(404).type('text/plain').send(`local proxy: port ${port} is not shared\n`);
+    }
 
     const headers: http.OutgoingHttpHeaders = { ...req.headers, host: `127.0.0.1:${port}` };
     delete headers['accept-encoding']; // html may be rewritten — skip compression
@@ -210,11 +218,20 @@ function planSyntheticRange(
 
 // WebSocket pass-through for /lp/<port>/... upgrades (dev-server HMR, apps
 // with live sockets). Returns true if the upgrade was handled.
-export function handleLocalWsUpgrade(request: http.IncomingMessage, socket: Duplex, head: Buffer): boolean {
+export interface LocalWsOptions extends LocalProxyOptions {
+  /** Called once an upgrade to <port> has been accepted. */
+  onAccept?: (port: number) => void;
+}
+
+export function handleLocalWsUpgrade(
+  request: http.IncomingMessage, socket: Duplex, head: Buffer, opts: LocalWsOptions = {},
+): boolean {
   const m = (request.url || '').match(LP_RE);
   if (!m) return false;
   const port = parseInt(m[1], 10);
   if (!(port >= 1 && port <= 65535)) { socket.destroy(); return true; }
+  if (opts.allowPort && !opts.allowPort(port)) { socket.destroy(); return true; }
+  opts.onAccept?.(port);
   const path = m[2] || '/';
   const upstream = net.connect(port, '127.0.0.1', () => {
     let raw = `${request.method} ${path} HTTP/1.1\r\n`;

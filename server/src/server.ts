@@ -53,6 +53,7 @@ import { initCanvas, registerCanvasRoutes, canvasWss } from './canvas';
 import { registerVoiceRoutes } from './voice';
 import { registerProxyRoutes, localProxyMiddleware, handleLocalWsUpgrade } from './proxy';
 import { contentRange, parseByteRange } from './range';
+import { initShare, registerShareRoutes, createShareServer } from './share';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -198,6 +199,11 @@ const ALL_CONTEXTS: Context[] = COORDINATOR_MODE && contexts
 initCanvas(ALL_CONTEXTS);
 registerCanvasRoutes(app);
 registerProxyRoutes(app);
+// Public share grants (time-limited, per-port, default off). The management
+// routes live here on the owner-only app; the public listener is started
+// alongside the main one below.
+initShare({ reservedPorts: [Number(PORT)], publicOrigin: process.env.TERMINAL_SHARE_ORIGIN });
+registerShareRoutes(app);
 registerVoiceRoutes(app, (req) => {
   const name = (req.query.context as string) || (req.body?.context as string) || '';
   if (!name) return ALL_CONTEXTS.find((c) => c.name === 'admin') || ALL_CONTEXTS[0];
@@ -1791,6 +1797,11 @@ app.use((_req, res) => {
 //     agent-* account) posts here. The terminal API is NOT mounted on it, so a
 //     local caller gets nothing else.
 //
+//  3. SHARE listener on a second Unix socket (TERMINAL_SHARE_SOCKET, default
+//     <runtime dir>/terminal-share.sock). cloudflared points a public hostname
+//     with NO Access policy at it. It serves only /lp/<port>/ for ports with a
+//     live share grant (see share.ts) — never the app, API or our websockets.
+//
 // Set TERMINAL_TCP=1 to serve the main app on TCP instead — used by dev.sh,
 // where Vite proxies to the backend over TCP.
 
@@ -1836,11 +1847,30 @@ function startNotifyListener() {
   });
 }
 
+function startShareListener() {
+  const shareServer = createShareServer();
+  const tcpPort = Number(process.env.TERMINAL_SHARE_PORT);
+  if (tcpPort > 0) {
+    shareServer.listen(tcpPort, '127.0.0.1', () => {
+      console.log(`Share listener on http://127.0.0.1:${tcpPort} (gated /lp only)`);
+    });
+    return;
+  }
+  const SHARE_SOCK = process.env.TERMINAL_SHARE_SOCKET
+    || path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), 'terminal-share.sock');
+  try { if (fs.existsSync(SHARE_SOCK)) fs.unlinkSync(SHARE_SOCK); } catch {}
+  shareServer.listen(SHARE_SOCK, () => {
+    try { fs.chmodSync(SHARE_SOCK, 0o600); } catch {}
+    console.log(`Share listener on unix:${SHARE_SOCK} (gated /lp only; public via ${process.env.TERMINAL_SHARE_ORIGIN || 'unset origin'})`);
+  });
+}
+
 if (process.env.TERMINAL_TCP === '1') {
   const HOST = process.env.HOST || '127.0.0.1';
   server.listen(Number(PORT), HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT} (TERMINAL_TCP)`);
     console.log(`Using tmux socket: ${TMUX_SOCKET || 'default'}`);
+    startShareListener();
   });
 } else {
   const SOCK = process.env.TERMINAL_SOCKET
@@ -1851,5 +1881,6 @@ if (process.env.TERMINAL_TCP === '1') {
     console.log(`Server running on unix:${SOCK} (mode 0600, ${os.userInfo().username} only)`);
     console.log(`Using tmux socket: ${TMUX_SOCKET || 'default'}`);
     startNotifyListener();
+    startShareListener();
   });
 }

@@ -15,6 +15,7 @@ import { isMultiTouch } from '../../lib/canvas/gesture';
 import type { BrowserRect, TileRect } from '../../lib/canvas/types';
 import { isAppLocal, localPortOf } from '../../lib/frameSrc';
 import { useStage } from './CanvasStage';
+import ShareButton from './ShareButton';
 
 const HEADER_H = 38;
 
@@ -261,6 +262,7 @@ export default function BrowserTile({ id, rect, selected, onSelect }: BrowserTil
             </svg>
           </button>
         )}
+        <ShareButton url={url} headerHeight={HEADER_H} />
         <button
           className="tile-btn" title="Open as a real browser tab"
           onPointerDown={stopPointer}
