@@ -750,19 +750,30 @@ app.get('/api/files', (req, res) => {
     const entries = fs.readdirSync(requestedPath, { withFileTypes: true });
     const files = entries.map(entry => {
       const fullPath = path.join(requestedPath, entry.name);
-      const isDir = entry.isDirectory();
+      const symlink = entry.isSymbolicLink();
+      let isDir = entry.isDirectory();
       let size: number | null = null;
       let modified: Date = new Date();
+      let broken = false;
       try {
+        // statSync follows symlinks, so a link to a dir lists as a dir
         const stats = fs.statSync(fullPath);
+        isDir = stats.isDirectory();
         modified = stats.mtime;
         if (!isDir) size = stats.size;
-      } catch {}
+      } catch {
+        broken = symlink;
+      }
+      let target: string | undefined;
+      if (symlink) {
+        try { target = fs.readlinkSync(fullPath); } catch {}
+      }
       return {
         name: entry.name,
         type: isDir ? 'directory' : 'file',
         size,
         modified,
+        ...(symlink ? { symlink, target, ...(broken ? { broken } : {}) } : {}),
       };
     });
 
@@ -795,7 +806,7 @@ app.get('/api/files/dir-sizes', (req, res) => {
   try {
     // du -b --max-depth=1 on the directory, with a timeout
     const result = execSync(
-      `du -b --max-depth=1 ${JSON.stringify(requestedPath)} 2>/dev/null || true`,
+      `du -bD --max-depth=1 ${JSON.stringify(requestedPath)} 2>/dev/null || true`,
       { encoding: 'utf-8', timeout: 15000 }
     );
     const sizes: Record<string, number> = {};

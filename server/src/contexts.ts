@@ -274,33 +274,74 @@ export interface CtxFileEntry {
   type: 'directory' | 'file';
   size: number | null;
   modified: Date;
+  // Set for symlinks. `type`/`size`/`modified` describe the target when it
+  // can be resolved (as the ctx user — no extra path confinement), else the
+  // link itself with broken=true.
+  symlink?: boolean;
+  target?: string;
+  broken?: boolean;
 }
 
 export async function ctxReadDir(ctx: Context, dirPath: string): Promise<CtxFileEntry[]> {
+  // %y = own type, %Y = type after following symlinks (N/L/? = missing, loop,
+  // error). No -L: bfs drops unresolvable links entirely under -L.
+  // -H: if dirPath itself is a symlink (e.g. ~/Desktop -> /bigdata/...), list
+  // the target's contents rather than the link.
   const { stdout, code, stderr } = await runSync(ctx, 'find', [
+    '-H',
     dirPath,
     '-mindepth', '1',
     '-maxdepth', '1',
-    '-printf', '%f\t%y\t%s\t%T@\n',
+    '-printf', '%f\t%y\t%Y\t%s\t%T@\t%l\n',
   ]);
-  if (code !== 0) throw new Error(stderr || 'find failed');
+  const text = stdout.toString('utf-8');
+  // find exits 1 when %Y can't resolve a link (EACCES, ELOOP) but still lists
+  // it, so only fail when nothing came back.
+  if (code !== 0 && !text) throw new Error(stderr || 'find failed');
   const out: CtxFileEntry[] = [];
-  for (const line of stdout.toString('utf-8').split('\n')) {
+  const resolvable: CtxFileEntry[] = [];
+  for (const line of text.split('\n')) {
     if (!line) continue;
-    const [name, typeChar, sizeStr, mtimeStr] = line.split('\t');
-    const isDir = typeChar === 'd';
-    out.push({
+    const [name, typeChar, targetChar, sizeStr, mtimeStr, ...rest] = line.split('\t');
+    const isLink = typeChar === 'l';
+    const isDir = targetChar === 'd';
+    const entry: CtxFileEntry = {
       name,
       type: isDir ? 'directory' : 'file',
       size: isDir ? null : parseInt(sizeStr, 10) || 0,
       modified: new Date((parseFloat(mtimeStr) || 0) * 1000),
+    };
+    if (isLink) {
+      entry.symlink = true;
+      entry.target = rest.join('\t');
+      if (targetChar === 'd' || targetChar === 'f') resolvable.push(entry);
+      else if (targetChar === 'N' || targetChar === 'L' || targetChar === '?') entry.broken = true;
+    }
+    out.push(entry);
+  }
+  // One batched stat -L for the real size/mtime behind resolvable links.
+  if (resolvable.length) {
+    const paths = resolvable.map((e) => path.join(dirPath, e.name));
+    const { stdout: st } = await runSync(ctx, 'stat', ['-L', '-c', '%s\t%Y\t%n', '--', ...paths]);
+    const byPath = new Map<string, { size: number; mtime: number }>();
+    for (const line of st.toString('utf-8').split('\n')) {
+      const m = /^(\d+)\t(\d+)\t(.*)$/.exec(line);
+      if (m) byPath.set(m[3], { size: parseInt(m[1], 10), mtime: parseInt(m[2], 10) });
+    }
+    resolvable.forEach((e, i) => {
+      const info = byPath.get(paths[i]);
+      if (!info) return;
+      if (e.type === 'file') e.size = info.size;
+      e.modified = new Date(info.mtime * 1000);
     });
   }
   return out;
 }
 
-export async function ctxStat(ctx: Context, p: string): Promise<{ type: 'directory' | 'file' | 'other'; size: number; mtime: Date } | null> {
-  const { stdout, code } = await runSync(ctx, 'stat', ['-c', '%F|%s|%Y', '--', p]);
+// Follows symlinks by default so content/stream/zip see the target. Pass
+// follow=false for existence checks, so a dangling link still "exists".
+export async function ctxStat(ctx: Context, p: string, follow = true): Promise<{ type: 'directory' | 'file' | 'other'; size: number; mtime: Date } | null> {
+  const { stdout, code } = await runSync(ctx, 'stat', [...(follow ? ['-L'] : []), '-c', '%F|%s|%Y', '--', p]);
   if (code !== 0) return null;
   const [fileType, sizeStr, mtimeStr] = stdout.toString('utf-8').trim().split('|');
   const t: 'directory' | 'file' | 'other' =
@@ -376,12 +417,12 @@ export async function ctxMove(ctx: Context, src: string, dest: string): Promise<
 }
 
 export async function ctxExists(ctx: Context, p: string): Promise<boolean> {
-  return (await ctxStat(ctx, p)) !== null;
+  return (await ctxStat(ctx, p, false)) !== null;
 }
 
 export async function ctxDirSizes(ctx: Context, dirPath: string): Promise<Record<string, number>> {
   try {
-    const { stdout, code } = await runSync(ctx, 'du', ['-b', '--max-depth=1', '--', dirPath]);
+    const { stdout, code } = await runSync(ctx, 'du', ['-bD', '--max-depth=1', '--', dirPath]);
     if (code !== 0) return {};
     const sizes: Record<string, number> = {};
     const base = path.resolve(dirPath);
