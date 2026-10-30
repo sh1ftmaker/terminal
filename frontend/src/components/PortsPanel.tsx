@@ -225,10 +225,16 @@ export default function PortsPanel() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><circle cx="12" cy="12" r="9" /><path d="M5.5 5.5l13 13" /></svg>
           </IconBtn>
         ) : p.uid >= 0 && !reserved.has(p.port) ? (
-          <IconBtn title={`Share publicly for ${data?.defaultMinutes ?? 60} min`} disabled={busy !== null}
-            onClick={() => act(key, () => createShare(p.port, undefined, p.label || g.title))}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.8 3 2.8 15 0 18M12 3c-2.8 3-2.8 15 0 18" /></svg>
-          </IconBtn>
+          <button
+            title={`Share publicly for ${data?.defaultMinutes ?? 60} min`} disabled={busy !== null}
+            onClick={() => act(key, () => createShare(p.port, undefined, p.label || g.title))}
+            className="h-7 px-2.5 rounded-md flex-shrink-0 text-[10.5px] font-bold tracking-wider transition-colors disabled:opacity-40"
+            style={{ color: C.public, background: `${C.public}14`, border: `1px solid ${C.public}55` }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = `${C.public}2e`; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = `${C.public}14`; }}
+          >
+            SHARE
+          </button>
         ) : null}
       </div>
     );
