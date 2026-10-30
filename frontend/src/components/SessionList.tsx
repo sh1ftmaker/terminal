@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import NotificationToggle from './NotificationToggle';
 import HomeTabs from './HomeTabs';
+import PortsPanel from './PortsPanel';
 
 interface SessionMeta {
   status?: 'working' | 'waiting' | 'finished' | 'idle';
@@ -249,6 +250,7 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
               )}
             </div>
           )}
+          <PortsPanel />
         </div>
 
         <div className="mt-6 flex-shrink-0">
