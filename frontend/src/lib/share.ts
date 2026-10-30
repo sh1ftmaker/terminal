@@ -92,6 +92,7 @@ export interface PortRow {
   process: string | null;
   command: string | null;
   unit: string | null;
+  cgroup: string | null;
   label: string | null;
   name: string;
   share: (ShareInfo & { owner?: string | null }) | null;
@@ -103,6 +104,7 @@ export interface Overview {
   origin: string | null;
   defaultMinutes: number;
   maxMinutes: number;
+  reservedPorts?: number[];
   contexts: Array<{ name: string; label: string; user: string | null }>;
   ports: PortRow[];
   tunnels: TunnelInfo[];
@@ -128,4 +130,8 @@ export function setPortLabel(port: number, label: string): Promise<{ port: numbe
   return fetch(`/api/ports/${port}/label`, {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label }),
   }).then((r) => asJson(r));
+}
+
+export function stopPort(port: number): Promise<{ stopped: boolean; method: string; target: string }> {
+  return fetch(`/api/ports/${port}/stop`, { method: 'POST' }).then((r) => asJson(r));
 }

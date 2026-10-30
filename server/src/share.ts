@@ -27,7 +27,7 @@ import path from 'path';
 import crypto from 'crypto';
 import type { Duplex } from 'stream';
 import { localProxyMiddleware, handleLocalWsUpgrade } from './proxy';
-import { scanPorts, scanTunnels, type PortInfo, type TunnelInfo } from './ports';
+import { scanPorts, scanTunnels, stopPort, type PortInfo, type TunnelInfo } from './ports';
 import { sendToAll } from './push';
 import type { Context } from './contexts';
 
@@ -253,7 +253,7 @@ export function revokeShare(portRaw: unknown): boolean {
 }
 
 export function shareLimits() {
-  return { origin: publicOrigin || null, defaultMinutes: DEFAULT_MINUTES, maxMinutes: MAX_MINUTES };
+  return { origin: publicOrigin || null, defaultMinutes: DEFAULT_MINUTES, maxMinutes: MAX_MINUTES, reservedPorts: [...reservedPorts] };
 }
 
 // --- requests ----------------------------------------------------------------
@@ -398,7 +398,7 @@ function ghostRow(port: number, label: string | null, share: ShareView | null, r
   return {
     port, bind: '', loopbackOnly: true, uid: -1,
     user: ctx ? (ctx.user ?? null) : account, context: ctx ? ctx.name : null,
-    pid: null, process: null, command: null, unit: null,
+    pid: null, process: null, command: null, unit: null, cgroup: null,
     label, name: label || share?.label || request?.label || `port ${port} (not listening)`,
     share, request, tunnels: tunnels.filter((t) => t.port === port),
   };
@@ -445,6 +445,18 @@ export function registerShareRoutes(app: Express) {
 
   app.put('/api/ports/:port/label', (req, res) => {
     try { res.json(setPortLabel(req.params.port, req.body?.label)); } catch (e) { fail(res, e); }
+  });
+
+  // Stop the process behind a port, as its owning account. Also drops any
+  // share grant on it so the public URL does not dangle.
+  app.post('/api/ports/:port/stop', async (req, res) => {
+    try {
+      const port = parsePort(req.params.port);
+      const result = await stopPort(port, contextList, reservedPorts);
+      revokeShare(port);
+      console.log(`[ports] stopped port ${port} via ${result.method} (${result.target})`);
+      res.json({ stopped: true, ...result });
+    } catch (e) { fail(res, e); }
   });
 }
 

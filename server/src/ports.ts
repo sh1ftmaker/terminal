@@ -29,6 +29,7 @@ export interface PortInfo {
   process: string | null;  // comm, e.g. "node"
   command: string | null;  // short human form of the cmdline
   unit: string | null;     // systemd unit/scope from the cgroup, if any
+  cgroup: string | null;   // raw cgroup path
 }
 
 export interface TunnelInfo {
@@ -121,11 +122,15 @@ function parseSs(out: string): Array<{ bind: string; port: number; pid: number |
   return rows;
 }
 
-async function run(cmd: string, args: string[]): Promise<string> {
+async function run(cmd: string, args: string[], strict = false): Promise<string> {
   try {
-    const { stdout } = await execFileP(cmd, args, { encoding: 'utf-8', timeout: 4000, maxBuffer: 4 * 1024 * 1024 });
+    const { stdout } = await execFileP(cmd, args, { encoding: 'utf-8', timeout: 8000, maxBuffer: 4 * 1024 * 1024 });
     return stdout;
-  } catch {
+  } catch (e) {
+    if (strict) {
+      const err = e as { stderr?: string; message: string };
+      throw new StopError(500, (err.stderr || err.message || 'command failed').trim().split('\n').pop() || 'command failed');
+    }
     return '';
   }
 }
@@ -185,6 +190,7 @@ async function doScanPorts(contexts: Context[]): Promise<PortInfo[]> {
       process,
       command: cmdline ? summarizeCommand(cmdline) : null,
       unit: r.cgroup ? unitFromCgroup(r.cgroup) : null,
+      cgroup: r.cgroup,
     };
     const prev = byPort.get(r.port);
     // v4 + v6 listeners for one service: keep the richer row, widest bind.
@@ -291,4 +297,39 @@ async function doScanTunnels(contexts: Context[]): Promise<TunnelInfo[]> {
 
 export function invalidatePortCache() {
   portCache = null;
+}
+
+export class StopError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+/**
+ * Stop whatever listens on <port>, as the account that owns it. A user
+ * .service unit is stopped through its own systemd user manager (so
+ * Restart= units stay down); anything else gets SIGTERM by pid. System
+ * services and the terminal server itself are refused.
+ */
+export async function stopPort(port: number, contexts: Context[], reserved: Set<number>): Promise<{ method: string; target: string }> {
+  if (reserved.has(port)) throw new StopError(403, 'that port belongs to the terminal server');
+  const info = (await scanPorts(contexts)).find((p) => p.port === port);
+  if (!info) throw new StopError(404, 'nothing is listening on that port');
+  if (info.pid === process.pid) throw new StopError(403, 'refusing to stop the terminal server');
+  if (info.uid < 1000 || (info.cgroup && info.cgroup.startsWith('/system.slice/'))) {
+    throw new StopError(403, `port ${port} is a system service (${info.unit || info.process || 'unknown'}); stop it with systemctl`);
+  }
+  const self = os.userInfo();
+  const asOwner = (cmd: string, args: string[]) =>
+    info.uid === self.uid ? run(cmd, args, true) : run('sudo', ['-n', '-u', info.user || String(info.uid), '--', cmd, ...args], true);
+
+  const unitMatch = info.cgroup && /\/user@(\d+)\.service\/.*\/([^/]+\.service)$/.exec(info.cgroup);
+  if (unitMatch && Number(unitMatch[1]) === info.uid) {
+    const unit = unitMatch[2];
+    await asOwner('env', [`XDG_RUNTIME_DIR=/run/user/${info.uid}`, 'systemctl', '--user', 'stop', unit]);
+    invalidatePortCache();
+    return { method: 'systemctl --user stop', target: unit };
+  }
+  if (!info.pid) throw new StopError(409, `could not determine the process behind port ${port}`);
+  await asOwner('kill', ['-TERM', String(info.pid)]);
+  invalidatePortCache();
+  return { method: 'SIGTERM', target: `${info.process || 'pid'} ${info.pid}` };
 }
