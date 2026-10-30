@@ -215,8 +215,8 @@ export default function PortsPanel() {
           ) : null}
           {p.tunnels.map((t, i) => tunnelBadge(t, p, i))}
           {p.uid >= 0 && (p.loopbackOnly
-            ? <Badge color={C.local} title="Bound to loopback — only reachable through the private proxy">local</Badge>
-            : <Badge color={C.lan} title={`Bound to ${p.bind} — reachable on the LAN`}>LAN</Badge>)}
+            ? <Badge color={C.local} title={`Bound to loopback — open through the private proxy: ${privateUrl(p.port)}`} onClick={() => openExternal(privateUrl(p.port))}>local ↗</Badge>
+            : <Badge color={C.lan} title={`Bound to ${p.bind} (reachable on the LAN) — open through the private proxy: ${privateUrl(p.port)}`} onClick={() => openExternal(privateUrl(p.port))}>LAN ↗</Badge>)}
           {p.uid < 0 && <Badge color={C.danger} title="Nothing is listening on this port">not listening</Badge>}
           {g.ports.length > 1 && p.label && <span className="text-[11px] text-slate-400 truncate">{p.label}</span>}
         </div>
