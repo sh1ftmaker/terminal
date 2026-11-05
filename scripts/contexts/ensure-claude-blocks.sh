@@ -3,7 +3,7 @@
 # listed user's ~/.claude/CLAUDE.md. Idempotent: a block is appended only if
 # its BEGIN marker is absent. Run as root (it chowns files to each user):
 #
-#   sudo scripts/contexts/ensure-claude-blocks.sh selstech agent-work agent-untrusted ...
+#   sudo scripts/contexts/ensure-claude-blocks.sh "$USER" agent-work agent-untrusted ...
 #
 # Called by setup.sh; safe to run on its own.
 set -euo pipefail
