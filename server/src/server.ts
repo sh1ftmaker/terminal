@@ -1780,7 +1780,7 @@ chatWss.on('connection', (ws, req) => {
 // Local reverse proxy (/lp/<port>/... → 127.0.0.1:<port>) — must sit after
 // every real route/static handler and before the SPA fallback so its
 // Referer-based stray-path catch never shadows the app itself.
-app.use(localProxyMiddleware());
+app.use(localProxyMiddleware({ selfPort: Number(PORT) }));
 
 // SPA fallback - use middleware instead of wildcard route for Express 5 compatibility
 app.use((_req, res) => {

@@ -74,6 +74,8 @@ function rewriteLocalHtml(html: string, port: number): string {
 export interface LocalProxyOptions {
   /** When set, only ports it approves are proxied; others answer 404. */
   allowPort?: (port: number) => boolean;
+  /** The port this app itself listens on (see the Referer fallback). */
+  selfPort?: number;
 }
 
 // Mounted late (just before the SPA fallback) so it never shadows the app's
@@ -90,6 +92,14 @@ export function localProxyMiddleware(opts: LocalProxyOptions = {}): RequestHandl
       const ref = String(req.headers.referer || '').match(/\/lp\/(\d{1,5})\//);
       if (!ref) return next();
       port = parseInt(ref[1], 10);
+      // Referred from /lp/<our own port>/: this app is being viewed through
+      // another instance's proxy, and this is one of its own requests that
+      // matched no route (an in-app path like /canvas, a missing asset).
+      // "Proxying" it would be a request to ourselves carrying the same
+      // Referer, which lands right back here: unbounded recursion that eats
+      // every socket on the machine. It is ours to answer, so let the app
+      // (SPA fallback) do it.
+      if (port === opts.selfPort) return next();
       targetPath = req.originalUrl;
     }
     if (!(port >= 1 && port <= 65535)) return res.status(400).send('local proxy: bad port');
