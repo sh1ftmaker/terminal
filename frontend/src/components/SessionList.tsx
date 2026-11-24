@@ -1,14 +1,20 @@
 // Home: the session list, with Ports & shares as a second pane.
+//
+// In coordinator mode (several contexts, each a Linux account with its own
+// tmux server) a context switcher sits under the header. It filters both
+// panes and decides where "New session" creates one.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ellipsis, LayoutDashboard, Plus, Settings2, SquareTerminal, Trash2, WifiOff } from 'lucide-react';
+import { Ellipsis, LayoutDashboard, Plus, Settings2, SquareTerminal, Trash2, UserRound, WifiOff } from 'lucide-react';
 import { API } from '../lib/base';
 import {
   STATUS, contextTone, sanitizeSessionName, shortAgo, statusOf,
   type ContextInfo, type Session,
 } from '../lib/sessions';
-import PortsPanel, { RequestCards } from './PortsPanel';
+import { useContexts } from '../lib/contexts';
+import { store } from '../lib/storage';
 import { pendingRequests, useOverview } from '../lib/useOverview';
+import PortsPanel, { RequestCards } from './PortsPanel';
 import SettingsSheet from './SettingsSheet';
 import { NotificationBell } from './NotificationToggle';
 import Sheet from './ui/Sheet';
@@ -24,8 +30,10 @@ interface SessionListProps {
 
 type Pane = 'sessions' | 'ports';
 const PANE_KEY = 'terminal.homePane';
+const CONTEXT_KEY = 'terminal.homeContext';
 
-const tone = (value: string) => ({ ['--chip']: value }) as React.CSSProperties;
+const chipTone = (value: string) => ({ ['--chip']: value }) as React.CSSProperties;
+const toneVar = (value: string) => ({ ['--tone']: value }) as React.CSSProperties;
 
 function SessionRow({ session, onOpen, onActions }: { session: Session; onOpen: () => void; onActions: () => void }) {
   const status = statusOf(session.meta);
@@ -43,7 +51,7 @@ function SessionRow({ session, onOpen, onActions }: { session: Session; onOpen: 
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-[15px] font-semibold truncate">{session.name}</span>
-            {session.meta?.preview_url && <span className="chip flex-shrink-0" style={tone('var(--info)')} title={session.meta.preview_url}>preview</span>}
+            {session.meta?.preview_url && <span className="chip flex-shrink-0" style={chipTone('var(--info)')} title={session.meta.preview_url}>preview</span>}
           </span>
           <span className="block text-[13px] leading-snug text-ink-2 mt-0.5 line-clamp-2">
             {status && <span className="font-medium" style={{ color: STATUS[status].tone }}>{STATUS[status].label}</span>}
@@ -63,14 +71,20 @@ function SessionRow({ session, onOpen, onActions }: { session: Session; onOpen: 
   );
 }
 
+// "Runs as agent-work" / "Runs as you": who owns the shells in a context.
+function runsAs(c: ContextInfo | undefined): string {
+  if (!c) return '';
+  return c.user ? `Runs as ${c.user}` : 'Runs as the server account';
+}
+
 export default function SessionList({ onSelectSession, onSwitchView }: SessionListProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [contexts, setContexts] = useState<ContextInfo[]>([]);
+  const contexts = useContexts();
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
-  const [pane, setPane] = useState<Pane>(() => {
-    try { return localStorage.getItem(PANE_KEY) === 'ports' ? 'ports' : 'sessions'; } catch { return 'sessions'; }
-  });
+  const [pane, setPane] = useState<Pane>(() => (store.get(PANE_KEY) === 'ports' ? 'ports' : 'sessions'));
+  // '' = all contexts
+  const [savedContext, setSavedContext] = useState<string>(() => store.get(CONTEXT_KEY) || '');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsFor, setActionsFor] = useState<Session | null>(null);
   const [killTarget, setKillTarget] = useState<Session | null>(null);
@@ -86,6 +100,9 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
   const overview = useOverview(pane === 'ports');
   const pendingCount = pendingRequests(overview.data).length;
   const multiContext = contexts.length > 0;
+  // A saved filter for a context that no longer exists means "all".
+  const activeContext = multiContext && contexts.some((c) => c.name === savedContext) ? savedContext : '';
+  const activeInfo = contexts.find((c) => c.name === activeContext);
   const failures = useRef(0);
 
   const fetchSessions = useCallback(async () => {
@@ -104,30 +121,35 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API}/api/contexts`)
-      .then((res) => (res.ok ? res.json() : { contexts: [] }))
-      .then((data) => {
-        if (cancelled) return;
-        const list: ContextInfo[] = data?.contexts || [];
-        setContexts(list);
-        setNewContext((cur) => cur || list[0]?.name || '');
-      })
-      .catch(() => { if (!cancelled) setContexts([]); });
     fetchSessions();
     const id = setInterval(fetchSessions, 3000);
     // Coming back to the app: refresh now rather than on the next tick.
     const onVisible = () => { if (document.visibilityState === 'visible') fetchSessions(); };
     document.addEventListener('visibilitychange', onVisible);
-    return () => { cancelled = true; clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
   }, [fetchSessions]);
 
-  useEffect(() => { try { localStorage.setItem(PANE_KEY, pane); } catch { /* private mode */ } }, [pane]);
+  useEffect(() => { store.set(PANE_KEY, pane); }, [pane]);
+
+  // Keep the selected context's pill in view (it may be saved from last time
+  // and sit beyond the edge of the row).
+  const ctxBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ctxBarRef.current?.querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }, [activeContext, multiContext]);
   useEffect(() => { document.title = 'Terminal'; }, []);
 
-  const openNew = () => {
+  const selectContext = (name: string) => {
+    setSavedContext(name);
+    store.set(CONTEXT_KEY, name);
+  };
+
+  // Opens the sheet aimed at a context: the given one, else the one being
+  // viewed, else the first (admin).
+  const openNew = (context?: string) => {
     setNewName('');
     setNewError('');
+    setNewContext(context || activeContext || contexts[0]?.name || '');
     setShowNew(true);
   };
 
@@ -176,27 +198,37 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
   };
 
   // Sessions grouped per context (coordinator mode), in the contexts' order.
+  // "All" lists every context that has sessions; a selected context lists
+  // just that one (even when empty, so it can offer to start the first).
   const groups = useMemo(() => {
-    if (!multiContext) return [{ key: 'all', label: '', color: '', sessions }];
-    const out = contexts
-      .map((c) => ({ key: c.name, label: c.label || c.name, color: contextTone(c.name), sessions: sessions.filter((s) => s.context === c.name) }))
-      .filter((g) => g.sessions.length > 0);
-    const known = new Set(contexts.map((c) => c.name));
-    const rest = sessions.filter((s) => !s.context || !known.has(s.context));
-    if (rest.length) out.push({ key: '?', label: 'Other', color: 'var(--ink-3)', sessions: rest });
+    if (!multiContext) return [{ key: 'all', info: undefined as ContextInfo | undefined, label: '', color: '', sessions }];
+    const shown = activeContext ? contexts.filter((c) => c.name === activeContext) : contexts;
+    const out = shown
+      .map((c) => ({ key: c.name, info: c as ContextInfo | undefined, label: c.label || c.name, color: contextTone(c.name), sessions: sessions.filter((s) => s.context === c.name) }))
+      .filter((g) => activeContext || g.sessions.length > 0);
+    if (!activeContext) {
+      const known = new Set(contexts.map((c) => c.name));
+      const rest = sessions.filter((s) => !s.context || !known.has(s.context));
+      if (rest.length) out.push({ key: '?', info: undefined, label: 'Other', color: 'var(--ink-3)', sessions: rest });
+    }
     return out;
-  }, [sessions, contexts, multiContext]);
+  }, [sessions, contexts, multiContext, activeContext]);
 
-  const waiting = sessions.filter((s) => s.meta?.status === 'waiting').length;
-  const working = sessions.filter((s) => s.meta?.status === 'working').length;
+  const visible = activeContext ? sessions.filter((s) => s.context === activeContext) : sessions;
+  const waiting = visible.filter((s) => s.meta?.status === 'waiting').length;
+  const working = visible.filter((s) => s.meta?.status === 'working').length;
+  const labelOf = (name?: string) => contexts.find((c) => c.name === name)?.label || name || '';
+  const newInfo = contexts.find((c) => c.name === newContext);
+
+  const gutter = { paddingLeft: 'calc(16px + var(--safe-l))', paddingRight: 'calc(16px + var(--safe-r))' };
 
   return (
     <div className="screen">
       <div className="statusbar-pad" />
 
       {/* The large title is the pane switcher: two headings, one lit. */}
-      <header className="flex-shrink-0 w-full max-w-3xl mx-auto pt-2 pb-3" style={{ paddingLeft: 'calc(16px + var(--safe-l))', paddingRight: 'calc(8px + var(--safe-r))' }}>
-        <div className="flex items-center">
+      <header className="flex-shrink-0 w-full max-w-3xl mx-auto pt-2 pb-3">
+        <div className="flex items-center" style={{ paddingLeft: 'calc(16px + var(--safe-l))', paddingRight: 'calc(8px + var(--safe-r))' }}>
           <div className="flex items-baseline gap-4 flex-1 min-w-0" role="tablist" aria-label="Home sections">
             {([['sessions', 'Sessions'], ['ports', 'Ports']] as const).map(([value, label]) => (
               <button
@@ -223,26 +255,52 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
             <Settings2 size={20} strokeWidth={1.9} />
           </button>
         </div>
-        <p className="m-0 text-[13.5px] text-ink-2 min-h-5 pr-2 truncate">
+        <p className="m-0 text-[13.5px] text-ink-2 min-h-5 truncate" style={gutter}>
           {pane === 'ports' ? (
-            'Listening services, and who can reach them'
+            activeInfo ? `Services of ${activeInfo.label || activeInfo.name}, and who can reach them` : 'Listening services, and who can reach them'
           ) : loading ? (
-            '\u00a0'
+            ' '
           ) : (
             <>
-              {sessions.length} session{sessions.length === 1 ? '' : 's'}
+              {visible.length} session{visible.length === 1 ? '' : 's'}
+              {activeInfo && <> in {activeInfo.label || activeInfo.name}</>}
               {waiting > 0 && <> · <span className="text-accent font-medium">{waiting} waiting for you</span></>}
               {working > 0 && <> · {working} working</>}
             </>
           )}
         </p>
+
+        {multiContext && (
+          <div ref={ctxBarRef} className="ctx-bar mt-3" role="radiogroup" aria-label="Context" style={gutter}>
+            <button className="ctx-chip" role="radio" aria-checked={activeContext === ''} onClick={() => selectContext('')}>
+              All <span className="ctx-count">{sessions.length}</span>
+            </button>
+            {contexts.map((c) => {
+              const mine = sessions.filter((s) => s.context === c.name);
+              const needsYou = mine.some((s) => s.meta?.status === 'waiting');
+              return (
+                <button
+                  key={c.name}
+                  className="ctx-chip"
+                  role="radio"
+                  aria-checked={activeContext === c.name}
+                  title={runsAs(c)}
+                  style={toneVar(contextTone(c.name))}
+                  onClick={() => selectContext(c.name)}
+                >
+                  <span className="status-dot" />
+                  {c.label || c.name}
+                  <span className="ctx-count">{mine.length}</span>
+                  {needsYou && <span className="status-dot" style={{ ...toneVar('var(--accent)'), width: 6, height: 6 }} aria-label="waiting for you" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
 
       <main className="scroll-y flex-1 min-h-0">
-        <div
-          className="w-full max-w-3xl mx-auto pt-1"
-          style={{ paddingLeft: 'calc(16px + var(--safe-l))', paddingRight: 'calc(16px + var(--safe-r))', paddingBottom: 'calc(104px + var(--safe-b))' }}
-        >
+        <div className="w-full max-w-3xl mx-auto pt-1" style={{ ...gutter, paddingBottom: 'calc(104px + var(--safe-b))' }}>
           {offline && (
             <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 mb-3 text-[13.5px] bg-danger-soft text-danger" role="status">
               <WifiOff size={16} className="flex-shrink-0" /> Can't reach the server. Retrying…
@@ -251,7 +309,7 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
 
           {pane === 'ports' ? (
             <div key="ports" className="anim-fade">
-              <PortsPanel {...overview} />
+              <PortsPanel {...overview} contextFilter={activeContext || undefined} />
             </div>
           ) : (
             <div key="sessions" className="anim-fade">
@@ -265,21 +323,43 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
                     </div>
                   ))}
                 </div>
-              ) : sessions.length === 0 ? (
-                <div className="flex flex-col items-center text-center px-6 pt-16 pb-8 anim-rise">
-                  <span className="status-tile !w-14 !h-14 !rounded-2xl"><SquareTerminal size={26} strokeWidth={1.7} /></span>
-                  <h2 className="m-0 mt-4 text-[17px] font-semibold">No sessions yet</h2>
-                  <p className="m-0 mt-1 text-[14px] text-ink-2 max-w-64">A session is a tmux shell that keeps running when you close the app.</p>
-                  <button className="btn btn-primary mt-5" onClick={openNew}><Plus size={18} strokeWidth={2.25} /> New session</button>
+              ) : visible.length === 0 ? (
+                <div className="flex flex-col items-center text-center px-6 pt-14 pb-8 anim-rise">
+                  <span className="status-tile !w-14 !h-14 !rounded-2xl" style={activeInfo ? toneVar(contextTone(activeInfo.name)) : undefined}>
+                    <SquareTerminal size={26} strokeWidth={1.7} />
+                  </span>
+                  <h2 className="m-0 mt-4 text-[17px] font-semibold">
+                    {activeInfo ? `No sessions in ${activeInfo.label || activeInfo.name}` : 'No sessions yet'}
+                  </h2>
+                  <p className="m-0 mt-1 text-[14px] text-ink-2 max-w-64">
+                    {activeInfo
+                      ? `${runsAs(activeInfo)}. A session is a tmux shell that keeps running when you close the app.`
+                      : 'A session is a tmux shell that keeps running when you close the app.'}
+                  </p>
+                  <button className="btn btn-primary mt-5" onClick={() => openNew()}>
+                    <Plus size={18} strokeWidth={2.25} /> New session{activeInfo ? ` in ${activeInfo.label || activeInfo.name}` : ''}
+                  </button>
                 </div>
               ) : (
                 groups.map((g) => (
                   <section key={g.key} className="mb-4">
                     {g.label && (
-                      <div className="flex items-center gap-2 px-1 pb-2 pt-1">
-                        <span className="status-dot" style={{ ['--tone' as string]: g.color }} />
+                      <div className="flex items-center gap-2 pl-1 min-h-9">
+                        <span className="status-dot" style={toneVar(g.color)} />
                         <span className="eyebrow" style={{ color: g.color }}>{g.label}</span>
-                        <span className="text-[12px] text-ink-3">{g.sessions.length}</span>
+                        <span className="text-[12px] text-ink-3 truncate">
+                          {g.sessions.length}{g.info?.user ? ` · ${g.info.user}` : ''}
+                        </span>
+                        {g.info && (
+                          <button
+                            className="icon-btn icon-btn-sm ml-auto"
+                            aria-label={`New session in ${g.label}`}
+                            title={`New session in ${g.label}`}
+                            onClick={() => openNew(g.info!.name)}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        )}
                       </div>
                     )}
                     <ul className="card divide-y divide-line m-0 p-0 list-none">
@@ -301,16 +381,13 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
       </main>
 
       {/* Floating action, kept inside the content column on wide screens */}
-      {pane === 'sessions' && !loading && sessions.length > 0 && (
+      {pane === 'sessions' && !loading && visible.length > 0 && (
         <div className="absolute inset-x-0 bottom-0 z-10 pointer-events-none">
-          <div
-            className="w-full max-w-3xl mx-auto flex justify-end"
-            style={{ paddingLeft: 'calc(16px + var(--safe-l))', paddingRight: 'calc(16px + var(--safe-r))', paddingBottom: 'calc(18px + var(--safe-b))' }}
-          >
+          <div className="w-full max-w-3xl mx-auto flex justify-end" style={{ ...gutter, paddingBottom: 'calc(18px + var(--safe-b))' }}>
             <button
               className="btn btn-primary pointer-events-auto !rounded-full !min-h-[52px] !pl-4 !pr-5 anim-rise"
               style={{ boxShadow: 'var(--shadow-pop)' }}
-              onClick={openNew}
+              onClick={() => openNew()}
             >
               <Plus size={20} strokeWidth={2.25} /> New session
             </button>
@@ -325,33 +402,33 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
         title="New session"
         footer={
           <button className="btn btn-primary w-full" disabled={creating || !cleanName} onClick={handleCreate}>
-            {creating ? 'Creating…' : 'Create and open'}
+            {creating ? 'Creating…' : multiContext && newInfo ? `Create in ${newInfo.label || newInfo.name}` : 'Create and open'}
           </button>
         }
       >
         {multiContext && (
           <div className="mb-4">
             <div className="eyebrow mb-2">Context</div>
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Context">
-              {contexts.map((c) => {
-                const selected = c.name === newContext;
-                const color = contextTone(c.name);
-                return (
-                  <button
-                    key={c.name}
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setNewContext(c.name)}
-                    className="btn btn-sm"
-                    style={selected
-                      ? { background: color, borderColor: 'transparent', color: 'var(--bg)' }
-                      : { background: `color-mix(in srgb, ${color} 12%, transparent)`, borderColor: `color-mix(in srgb, ${color} 34%, transparent)`, color }}
-                  >
-                    {c.label || c.name}
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Context for the new session">
+              {contexts.map((c) => (
+                <button
+                  key={c.name}
+                  role="radio"
+                  aria-checked={c.name === newContext}
+                  // Keep the keyboard on the name field while picking.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setNewContext(c.name)}
+                  className="ctx-chip"
+                  style={toneVar(contextTone(c.name))}
+                >
+                  <span className="status-dot" />
+                  {c.label || c.name}
+                </button>
+              ))}
             </div>
+            <p className="m-0 mt-2 flex items-center gap-1.5 text-[13px] text-ink-2">
+              <UserRound size={14} className="flex-shrink-0" /> {runsAs(newInfo)}
+            </p>
           </div>
         )}
         <label className="eyebrow block mb-2" htmlFor="new-session-name">Name</label>
@@ -382,7 +459,15 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
       </Sheet>
 
       {/* Per-session actions */}
-      <Sheet open={actionsFor !== null} onClose={() => setActionsFor(null)} bare title={actionsFor ? <span className="font-mono">{actionsFor.name}</span> : ''}>
+      <Sheet
+        open={actionsFor !== null}
+        onClose={() => setActionsFor(null)}
+        bare
+        title={actionsFor ? <span className="font-mono">{actionsFor.name}</span> : ''}
+        subtitle={actionsFor?.context && multiContext
+          ? <span style={{ color: contextTone(actionsFor.context) }}>{labelOf(actionsFor.context)}</span>
+          : undefined}
+      >
         {actionsFor && (
           <div className="flex flex-col gap-2 pt-1">
             <button className="btn justify-start" onClick={() => { const s = actionsFor; setActionsFor(null); onSelectSession(s.name, s.context); }}>
@@ -405,7 +490,7 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
         onCancel={() => setKillTarget(null)}
         onConfirm={handleKill}
       >
-        This ends the tmux session and everything running inside it. It cannot be undone.
+        This ends the tmux session{killTarget?.context && multiContext ? ` in ${labelOf(killTarget.context)}` : ''} and everything running inside it. It cannot be undone.
       </ConfirmSheet>
 
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />

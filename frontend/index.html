@@ -33,8 +33,15 @@
           location.replace(location.pathname + '/' + location.search + location.hash);
           return;
         }
+        // Same key as src/lib/storage.ts: namespaced by the mount path unless
+        // the app sits at the origin root. The manifest link is the one
+        // mount-relative URL available this early.
         var pref = 'system';
-        try { pref = JSON.parse(localStorage.getItem('terminal.settings') || '{}').theme || 'system'; } catch (e) {}
+        try {
+          var base = new URL('.', document.querySelector('link[rel="manifest"]').href).pathname;
+          var key = (base === '/' ? '' : base + '|') + 'terminal.settings';
+          pref = JSON.parse(localStorage.getItem(key) || '{}').theme || 'system';
+        } catch (e) {}
         var dark = pref === 'dark' || (pref !== 'light' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         var meta = document.querySelector('meta[name="theme-color"]');

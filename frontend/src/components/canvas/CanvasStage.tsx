@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import type { TileRect } from '../../lib/canvas/types';
 import { canvasSocket } from '../../lib/canvas/ws';
 import { isMultiTouch, setMultiTouch } from '../../lib/canvas/gesture';
+import { store } from '../../lib/storage';
 
 export interface StageApi {
   getScale(): number;
@@ -34,7 +35,7 @@ const MAX_S = 2.5;
 
 function loadViewport(): Viewport {
   try {
-    const v = JSON.parse(localStorage.getItem(VIEWPORT_KEY) || '');
+    const v = JSON.parse(store.get(VIEWPORT_KEY) || '');
     if (typeof v.x === 'number' && typeof v.y === 'number' && typeof v.s === 'number') return v;
   } catch { /* fall through */ }
   // Default: clear the sidebar (desktop) and start slightly zoomed out.
@@ -111,7 +112,7 @@ export default function CanvasStage({ children, onApi }: CanvasStageProps) {
   const save = () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      try { localStorage.setItem(VIEWPORT_KEY, JSON.stringify(vp.current)); } catch { /* full */ }
+      store.set(VIEWPORT_KEY, JSON.stringify(vp.current));
     }, 400);
   };
 

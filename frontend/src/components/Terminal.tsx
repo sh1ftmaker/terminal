@@ -8,6 +8,7 @@ import { openExternal } from '../lib/openExternal';
 import { API, wsUrl } from '../lib/base';
 import { getSettings, useSettings } from '../lib/settings';
 import { terminalMinContrast, terminalTheme, useThemeKey } from '../lib/theme';
+import { store } from '../lib/storage';
 
 export interface TerminalHandle {
   /** Send raw bytes to the pty. */
@@ -59,7 +60,7 @@ const TERMINAL_REPORT = /^\x1b(?:\[[?>]?[\d;]*\$?[IOcRnty]$|\]|P)/;
 const UNWRAP_COPY_KEY = 'terminal.unwrapCopy';
 const UNWRAP_COPY_EVENT = 'terminal:unwrap-copy';
 function loadUnwrapCopy(): boolean {
-  try { return localStorage.getItem(UNWRAP_COPY_KEY) !== '0'; } catch { return true; }
+  return store.get(UNWRAP_COPY_KEY) !== '0';
 }
 
 // xterm's measured cell box. There is no public accessor; the fallbacks
@@ -190,7 +191,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
 
   const toggleUnwrapCopy = useCallback(() => {
     setUnwrapCopy((v) => {
-      try { localStorage.setItem(UNWRAP_COPY_KEY, v ? '0' : '1'); } catch { /* ignore */ }
+      store.set(UNWRAP_COPY_KEY, v ? '0' : '1');
       return !v;
     });
   }, []);

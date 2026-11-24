@@ -3,6 +3,7 @@ import SessionList from './components/SessionList';
 import TerminalView from './components/TerminalView';
 import ToastHost from './components/ui/ToastHost';
 import { appPath, currentRoute } from './lib/base';
+import { store } from './lib/storage';
 
 // The canvas (and its voice agent) is a different, desktop-leaning home: keep
 // it out of the bundle a phone downloads to reach its sessions.
@@ -18,11 +19,7 @@ type HomeView = 'list' | 'canvas';
 const HOME_VIEW_KEY = 'terminal:homeView';
 
 function savedHomeView(): HomeView {
-  try {
-    return localStorage.getItem(HOME_VIEW_KEY) === 'canvas' ? 'canvas' : 'list';
-  } catch {
-    return 'list';
-  }
+  return store.get(HOME_VIEW_KEY) === 'canvas' ? 'canvas' : 'list';
 }
 
 interface Route {
@@ -70,7 +67,7 @@ function App() {
   };
 
   const handleSwitchView = (home: HomeView) => {
-    try { localStorage.setItem(HOME_VIEW_KEY, home); } catch { /* private mode */ }
+    store.set(HOME_VIEW_KEY, home);
     setRoute({ selection: null, home });
     writeUrl(null, home);
   };

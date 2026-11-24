@@ -9,6 +9,7 @@ import Switch from './ui/Switch';
 import NotificationRow from './NotificationToggle';
 import { FONT_MAX, FONT_MIN, setSettings, useSettings, type ThemePref } from '../lib/settings';
 import { useThemeKey } from '../lib/theme';
+import { store } from '../lib/storage';
 
 interface SettingsSheetProps {
   open: boolean;
@@ -21,7 +22,7 @@ interface SettingsSheetProps {
 const UNWRAP_COPY_KEY = 'terminal.unwrapCopy';
 const UNWRAP_COPY_EVENT = 'terminal:unwrap-copy';
 function readUnwrap(): boolean {
-  try { return localStorage.getItem(UNWRAP_COPY_KEY) !== '0'; } catch { return true; }
+  return store.get(UNWRAP_COPY_KEY) !== '0';
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -50,7 +51,7 @@ function Row({ title, hint, children }: { title: string; hint?: string; children
 function UnwrapRow() {
   const [unwrap, setUnwrapState] = useState(readUnwrap);
   const setUnwrap = (on: boolean) => {
-    try { localStorage.setItem(UNWRAP_COPY_KEY, on ? '1' : '0'); } catch { /* private mode */ }
+    store.set(UNWRAP_COPY_KEY, on ? '1' : '0');
     setUnwrapState(on);
     window.dispatchEvent(new Event(UNWRAP_COPY_EVENT));   // open terminals pick it up
   };

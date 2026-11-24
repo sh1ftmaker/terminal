@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, Download, FileQuestion, Pencil, X } from 'lucide-react';
+import ConfirmSheet from './ui/ConfirmSheet';
 // The common-languages build, plus the few extras the extension map names:
 // a third of the size of the full bundle. Token colours come from index.css.
 import hljs from 'highlight.js/lib/common';
@@ -122,13 +123,16 @@ export default function FileViewer({ filePath, fileSize, context, onBack }: File
     setTimeout(() => textareaRef.current?.focus(), 50);
   }, [textContent]);
 
-  const exitEditMode = useCallback(() => {
-    if (dirty) {
-      if (!confirm('Discard unsaved changes?')) return;
-    }
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const discardEdits = useCallback(() => {
+    setConfirmDiscard(false);
     setEditing(false);
     setDirty(false);
-  }, [dirty]);
+  }, []);
+  const exitEditMode = useCallback(() => {
+    if (dirty) setConfirmDiscard(true);
+    else discardEdits();
+  }, [dirty, discardEdits]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -328,6 +332,17 @@ export default function FileViewer({ filePath, fileSize, context, onBack }: File
       <div className={`flex-1 min-h-0 ${editing ? '' : 'scroll-y'}`}>
         {renderContent()}
       </div>
+
+      <ConfirmSheet
+        open={confirmDiscard}
+        title="Discard your changes?"
+        confirmLabel="Discard changes"
+        danger
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={discardEdits}
+      >
+        The edits to {fileName} have not been saved.
+      </ConfirmSheet>
 
       {/* Zoom lightbox */}
       {zoomed && (

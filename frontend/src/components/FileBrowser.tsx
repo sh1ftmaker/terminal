@@ -8,6 +8,7 @@ import { shortAgo } from '../lib/sessions';
 // The viewer pulls in the syntax highlighter; load it when a file is opened.
 const FileViewer = lazy(() => import('./FileViewer'));
 import { API } from '../lib/base';
+import { store } from '../lib/storage';
 
 interface FileEntry {
   name: string;
@@ -132,7 +133,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
         const data = await res.json();
         setListing(data);
         setCurrentPath(path);
-        try { localStorage.setItem(STORAGE_KEY, path); } catch {}
+        store.set(STORAGE_KEY, path);
       } else {
         const { error } = await res.json();
         setError(error || 'Failed to load directory');
@@ -151,7 +152,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
       fetchDirectory(sessionCwd).then(() => {});
       return;
     }
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved = store.get(STORAGE_KEY);
     if (saved) {
       fetchDirectory(saved).then(() => {});
     } else {

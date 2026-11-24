@@ -38,14 +38,17 @@ export function statusOf(meta?: SessionMeta): SessionStatus | null {
   return meta?.status && STATUS[meta.status] ? meta.status : null;
 }
 
-// Per-context colours: stable by name. The common role names get a fixed,
-// meaningful tone; anything else hashes onto the palette.
+// Per-context colours: stable by name. The usual role names keep a fixed
+// tone (the same families the app has always used for them); anything else
+// hashes onto the palette.
 const CONTEXT_TONES: Record<string, string> = {
   admin: 'var(--ink-2)',
   work: 'var(--warn)',
+  john: 'var(--teal)',
   untrusted: 'var(--danger)',
+  tom: 'var(--violet)',
 };
-const TONE_CYCLE = ['var(--info)', 'var(--violet)', 'var(--ok)', 'var(--accent)', 'var(--warn)'];
+const TONE_CYCLE = ['var(--info)', 'var(--violet)', 'var(--teal)', 'var(--ok)', 'var(--warn)'];
 
 export function contextTone(name: string | null | undefined): string {
   if (!name) return 'var(--ink-3)';

@@ -2,6 +2,7 @@
 // through useSyncExternalStore.
 
 import { useSyncExternalStore } from 'react';
+import { store } from './storage';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
@@ -30,7 +31,7 @@ function defaults(): Settings {
 function load(): Settings {
   const base = defaults();
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings>;
+    const raw = JSON.parse(store.get(KEY) || '{}') as Partial<Settings>;
     return {
       theme: raw.theme === 'light' || raw.theme === 'dark' ? raw.theme : 'system',
       fontSize: typeof raw.fontSize === 'number' ? clampFont(raw.fontSize) : base.fontSize,
@@ -57,7 +58,7 @@ export function setSettings(patch: Partial<Settings>): void {
   const next = { ...current, ...patch };
   next.fontSize = clampFont(next.fontSize);
   current = next;
-  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private mode */ }
+  store.set(KEY, JSON.stringify(next));
   listeners.forEach((fn) => fn());
 }
 
@@ -73,7 +74,7 @@ export function useSettings(): Settings {
 // Another tab changed the settings: follow it.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key !== KEY) return;
+    if (e.key !== store.key(KEY)) return;
     current = load();
     listeners.forEach((fn) => fn());
   });

@@ -4,6 +4,7 @@
 import { canvasStore } from './store';
 import { wsUrl } from '../base';
 import type { Op, ScreenFrame, VoicePresence } from './types';
+import { store } from '../storage';
 
 type ScreenListener = (frame: ScreenFrame) => void;
 export type CursorEvent = { id: string; x: number; y: number };
@@ -40,7 +41,7 @@ class CanvasSocket {
     ws.onopen = () => {
       this.retryMs = 1000;
       canvasStore.set({ connected: true });
-      const name = localStorage.getItem('terminal:clientName');
+      const name = store.get('terminal:clientName');
       if (name) this.send({ type: 'hello', name });
       for (const key of this.subCounts.keys()) this.send({ type: 'sub', key });
     };

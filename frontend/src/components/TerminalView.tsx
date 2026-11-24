@@ -9,6 +9,7 @@ import { toast } from './ui/toast';
 import { resolveFrameSrc } from '../lib/frameSrc';
 import { API } from '../lib/base';
 import { STATUS, contextTone, statusOf, type SessionMeta } from '../lib/sessions';
+import { contextLabel, contextUser, useContexts } from '../lib/contexts';
 
 // Not reachable from the tab bar at the moment; kept out of the main bundle.
 const ChatView = lazy(() => import('./ChatView.tsx'));
@@ -77,6 +78,9 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
     }
   };
 
+  const contexts = useContexts();
+  const multiContext = contexts.length > 0;
+  const ctxUser = contextUser(contexts, context);
   const status = statusOf(meta);
   const showPreview = Boolean(meta.preview_url);
   // On the Preview tab when the preview URL disappears: fall back to Terminal.
@@ -116,7 +120,11 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
           <div className="flex items-center gap-1.5 text-[11.5px] leading-4 text-ink-2 min-w-0" title={meta.task ? `${statusText}: ${meta.task}` : statusText}>
             <span className={dotClass} style={{ width: 7, height: 7, ...(dotTone ? { ['--tone' as string]: dotTone } : {}) }} />
             <span className="truncate font-medium" style={statusColor ? { color: statusColor } : undefined}>{statusText}</span>
-            {context && <span className="truncate" style={{ color: contextTone(context) }}>· {context}</span>}
+            {context && multiContext && (
+              <span className="chip flex-shrink-0 !h-[17px] !px-1.5 !text-[10.5px]" style={{ ['--chip' as string]: contextTone(context) }} title={ctxUser ? `Runs as ${ctxUser}` : 'Runs as the server account'}>
+                {contextLabel(contexts, context)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -164,7 +172,12 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
           <div className="flex items-center gap-3 py-3">
             <div className="min-w-0 flex-1">
               <div className="font-mono text-[15px] font-medium truncate">{sessionName}</div>
-              <div className="text-[13px] text-ink-2 mt-0.5 truncate">{meta.cwd || (context ? `Context: ${context}` : 'tmux session')}</div>
+              <div className="text-[13px] text-ink-2 mt-0.5 truncate">
+                {context && multiContext
+                  ? <><span style={{ color: contextTone(context) }}>{contextLabel(contexts, context)}</span> · {ctxUser ? `runs as ${ctxUser}` : 'runs as the server account'}</>
+                  : (meta.cwd || 'tmux session')}
+              </div>
+              {context && multiContext && meta.cwd && <div className="font-mono text-[11.5px] text-ink-3 mt-0.5 truncate">{meta.cwd}</div>}
             </div>
             <button className="btn btn-sm btn-danger" onClick={() => setConfirmKill(true)}>
               <Trash2 size={15} /> Kill
@@ -181,7 +194,7 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
         onCancel={() => setConfirmKill(false)}
         onConfirm={handleKill}
       >
-        This ends the tmux session and everything running inside it. It cannot be undone.
+        This ends the tmux session{context && multiContext ? ` in ${contextLabel(contexts, context)}` : ''} and everything running inside it. It cannot be undone.
       </ConfirmSheet>
     </div>
   );

@@ -132,7 +132,12 @@ export function RequestCards({ data, refresh }: { data: Overview | null; refresh
 
 // --- The pane ---------------------------------------------------------------------
 
-export default function PortsPanel({ data, error: loadError, refresh }: OverviewState) {
+interface PortsPanelProps extends OverviewState {
+  /** Show only this context's services and requests (the home switcher). */
+  contextFilter?: string;
+}
+
+export default function PortsPanel({ data, error: loadError, refresh, contextFilter }: PortsPanelProps) {
   const { busy, error: actionError, act } = useActions(refresh);
   const [showSystem, setShowSystem] = useState(false);
   const [editing, setEditing] = useState<{ key: string; value: string } | null>(null);
@@ -152,13 +157,16 @@ export default function PortsPanel({ data, error: loadError, refresh }: Overview
   const groups = groupPorts(ports);
   const sections: Array<{ key: string; title: string; color: string; groups: Group[] }> = [];
   for (const c of contexts) {
+    if (contextFilter && c.name !== contextFilter) continue;
     const gs = groups.filter((g) => g.context === c.name);
     if (gs.length) sections.push({ key: c.name, title: c.label || c.name, color: contextTone(c.name), groups: gs });
   }
-  const otherAccounts = [...new Set(groups.filter((g) => g.context === null && !g.ports.some(isSystem)).map((g) => g.account))];
+  // Accounts outside any context, system services and bare-socket tunnels
+  // belong to no one in particular: only in the unfiltered view.
+  const otherAccounts = contextFilter ? [] : [...new Set(groups.filter((g) => g.context === null && !g.ports.some(isSystem)).map((g) => g.account))];
   for (const a of otherAccounts) sections.push({ key: `u:${a}`, title: a, color: 'var(--ink-2)', groups: groups.filter((g) => g.context === null && g.account === a && !g.ports.some(isSystem)) });
-  const systemGroups = groups.filter((g) => g.ports.some(isSystem));
-  const socketTunnels = (data?.tunnels ?? []).filter((t) => t.port === null);
+  const systemGroups = contextFilter ? [] : groups.filter((g) => g.ports.some(isSystem));
+  const socketTunnels = contextFilter ? [] : (data?.tunnels ?? []).filter((t) => t.port === null);
   const privateUrl = (port: number) => `${window.location.origin}${localProxyPath(port)}`;
   const reserved = new Set(data?.reservedPorts ?? []);
 
@@ -308,7 +316,11 @@ export default function PortsPanel({ data, error: loadError, refresh }: Overview
               {showSystem && <div className="grid gap-2 sm:grid-cols-2 items-start">{systemGroups.map((g) => processCard(g))}</div>}
             </div>
           )}
-          {sections.length === 0 && systemGroups.length === 0 && <div className="text-ink-3 text-[14px] text-center py-10">No listening ports found.</div>}
+          {sections.length === 0 && systemGroups.length === 0 && (
+            <div className="text-ink-3 text-[14px] text-center py-10">
+              {contextFilter ? 'Nothing is listening in this context.' : 'No listening ports found.'}
+            </div>
+          )}
           {socketTunnels.length > 0 && (
             <div>
               {sectionHeader('tunnels to unix sockets', TONE.tunnel, socketTunnels.length)}
