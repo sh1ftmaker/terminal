@@ -224,11 +224,12 @@ html[data-kb='open'] {
 
   #root {
     position: fixed;
-    top: 0;
     left: 0;
     width: 100%;
+    /* top, not a transform: a permanently transformed root is its own
+       composited layer, which iOS can rasterise soft around the keyboard. */
+    top: var(--app-top, 0px);
     height: var(--app-h);
-    transform: translateY(var(--app-top));
     overflow: hidden;
   }
 

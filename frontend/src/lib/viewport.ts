@@ -32,6 +32,8 @@ const listeners = new Set<() => void>();
 let baseline = 0;
 let baselineWidth = 0;
 let frame = 0;
+let unpanCount = 0;
+let unpanWindowStart = 0;
 
 function isEditable(el: Element | null): boolean {
   if (!el) return false;
@@ -67,8 +69,21 @@ function measure(): void {
   if (keyboardOpen && height < TIGHT_HEIGHT) root.dataset.tight = '1';
   else delete root.dataset.tight;
 
-  // iOS leaves the page scrolled after the keyboard closes.
-  if (!keyboardOpen && (window.scrollY !== 0 || window.scrollX !== 0)) window.scrollTo(0, 0);
+  // iOS pans the page when the keyboard opens and leaves it panned after it
+  // closes. A panned page puts the header "under" the status bar, where iOS
+  // blurs and fades it. The app is already sized to the visible area, so undo
+  // the pan right away. If iOS keeps panning back (it wants a focused field in
+  // view), give up until the keyboard closes and rely on --app-top instead.
+  if (window.scrollY !== 0 || window.scrollX !== 0) {
+    const now = performance.now();
+    if (now - unpanWindowStart > 1000) { unpanWindowStart = now; unpanCount = 0; }
+    if (!keyboardOpen || unpanCount < 4) {
+      unpanCount++;
+      window.scrollTo(0, 0);
+      schedule();
+    }
+  }
+  if (!keyboardOpen) unpanCount = 0;
 
   if (width !== state.width || height !== state.height || keyboardOpen !== state.keyboardOpen) {
     state = { width, height, keyboardOpen };
