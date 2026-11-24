@@ -1032,6 +1032,17 @@ html[data-kb='open'] {
   .key-accent {
     color: var(--accent);
   }
+  /* The narrowest phones (320px): nine keys still fit, with tighter type. */
+  @media (max-width: 359px) {
+    .keybar-grid {
+      gap: 3px;
+    }
+    .key {
+      font-size: 11px;
+      letter-spacing: -0.03em;
+    }
+  }
+
   /* Modifier, armed for the next key. */
   .key[data-mod='armed'] {
     color: var(--accent);

@@ -140,7 +140,10 @@ function revealCursor(container: HTMLElement, terminal: XTerm, force: boolean) {
   const top = PAD_TOP + (terminal.buffer.active.baseY + terminal.buffer.active.cursorY) * rowH;
   const height = container.clientHeight;
   const max = Math.max(0, container.scrollHeight - height);
-  const margin = Math.min(FOLLOW_MARGIN_ROWS * rowH, Math.max(0, height - rowH * 2));
+  // A fifth of the window, at most FOLLOW_MARGIN_ROWS: with eight rows left
+  // above a landscape keyboard, history matters more than the footer.
+  const marginRows = Math.max(1, Math.min(FOLLOW_MARGIN_ROWS, Math.floor(height / rowH / 5)));
+  const margin = Math.min(marginRows * rowH, Math.max(0, height - rowH * 2));
   const anchored = Math.min(max, Math.max(0, top + rowH + margin - height));
 
   if (force) {
