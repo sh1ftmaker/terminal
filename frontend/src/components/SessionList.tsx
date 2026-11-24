@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipsis, LayoutDashboard, Plus, Settings2, SquareTerminal, Trash2, UserRound, WifiOff } from 'lucide-react';
 import { API } from '../lib/base';
 import {
-  STATUS, contextTone, sanitizeSessionName, shortAgo, statusOf,
+  STATUS, backgroundDetail, contextTone, sanitizeSessionName, shortAgo, statusLabel, statusOf,
   type ContextInfo, type Session,
 } from '../lib/sessions';
 import { useContexts } from '../lib/contexts';
@@ -54,7 +54,7 @@ function SessionRow({ session, onOpen, onActions }: { session: Session; onOpen: 
             {session.meta?.preview_url && <span className="chip flex-shrink-0" style={chipTone('var(--info)')} title={session.meta.preview_url}>preview</span>}
           </span>
           <span className="block text-[13px] leading-snug text-ink-2 mt-0.5 line-clamp-2">
-            {status && <span className="font-medium" style={{ color: STATUS[status].tone }}>{STATUS[status].label}</span>}
+            {status && <span className="font-medium" style={{ color: STATUS[status].tone }} title={backgroundDetail(session.meta) || undefined}>{statusLabel(session.meta, status)}</span>}
             {status && task ? <span className="text-ink-3"> · </span> : null}
             {task}
             {!status && !task && <span className="text-ink-3">Shell</span>}

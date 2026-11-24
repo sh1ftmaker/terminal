@@ -21,7 +21,7 @@ interface CanvasSidebarProps {
 function band(s: RosterEntry): 0 | 1 | 2 {
   const st = s.meta?.status;
   if (st === 'waiting') return 0;
-  if (st === 'working') return 1;
+  if (st === 'working' || st === 'background') return 1;
   return 2;
 }
 

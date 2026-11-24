@@ -17,6 +17,7 @@ export function sessionColor(key: string): string {
 // theme tokens, because tile screens stay dark in both canvas themes.
 export const STATUS_COLORS: Record<string, string> = {
   working: '#74b4e8',
+  background: '#74b4e8',
   waiting: '#f5a04a',
   finished: '#86c47c',
   idle: '#857d72',

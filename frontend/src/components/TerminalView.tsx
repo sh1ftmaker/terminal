@@ -8,7 +8,7 @@ import Segmented, { type SegmentedOption } from './ui/Segmented';
 import { toast } from './ui/toast';
 import { resolveFrameSrc } from '../lib/frameSrc';
 import { API } from '../lib/base';
-import { STATUS, contextTone, statusOf, type SessionMeta } from '../lib/sessions';
+import { STATUS, contextTone, statusLabel, statusOf, type SessionMeta } from '../lib/sessions';
 import { contextLabel, contextUser, useContexts } from '../lib/contexts';
 
 // Not reachable from the tab bar at the moment; kept out of the main bundle.
@@ -101,9 +101,9 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
     dotClass = `status-dot ${connecting ? 'status-connecting' : 'status-disconnected'}`;
     statusText = connecting ? 'Connecting…' : 'Reconnecting…';
   } else if (status) {
-    dotClass = `status-dot ${status === 'working' ? 'anim-breathe' : ''}`;
+    dotClass = `status-dot ${status === 'working' || status === 'background' ? 'anim-breathe' : ''}`;
     dotTone = STATUS[status].tone;
-    statusText = STATUS[status].label;
+    statusText = statusLabel(meta, status);
     statusColor = status === 'idle' ? undefined : STATUS[status].tone;
   }
 

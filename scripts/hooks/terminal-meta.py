@@ -5,6 +5,9 @@ Fires on UserPromptSubmit / Stop / SessionStart / SessionEnd. Looks up the
 current tmux session via $TMUX and writes /tmp/claude-terminal-meta/<session>.json
 with status, task summary (gist of Claude's last reply), cwd, and claude
 session id. Preserves any fields set by `tm-meta` (like preview_url) across turns.
+
+Status is "background" (not "waiting") when a turn ends with subagents or
+background shells still running; `background` lists them.
 """
 import json
 import os
@@ -103,6 +106,25 @@ def last_assistant_text(transcript_path: str) -> str:
     return ""
 
 
+BACKGROUND_MAX = 8
+
+
+def running_background(tasks) -> list:
+    """Running entries of the Stop event's `background_tasks`, reduced to what
+    the UI shows: kind ("subagent" / "shell" / ...) and a short description."""
+    out = []
+    if not isinstance(tasks, list):
+        return out
+    for t in tasks:
+        if not isinstance(t, dict) or t.get("status", "running") != "running":
+            continue
+        desc = clean_line(str(t.get("description") or t.get("command") or ""))
+        out.append({"type": str(t.get("type") or "task"), "description": desc[:120]})
+        if len(out) >= BACKGROUND_MAX:
+            break
+    return out
+
+
 def main():
     sess = tmux_session()
     if not sess:
@@ -135,14 +157,26 @@ def main():
         # context while Claude starts a new response — it updates on Stop.
         meta["status"] = "working"
     elif hook == "Stop":
-        meta["status"] = "waiting"
-        # Extract a human-readable summary from Claude's latest reply.
-        summary = summarize_reply(last_assistant_text(transcript))
+        # Subagents / background shells still running: the turn ended, but the
+        # session isn't waiting on the user. Each one that finishes re-invokes
+        # Claude, so the next Stop refreshes this list.
+        background = running_background(event.get("background_tasks"))
+        meta["background"] = background
+        meta["status"] = "background" if background else "waiting"
+        # Prefer the final reply Claude Code hands the hook: when the hook runs,
+        # the current turn usually hasn't been flushed to the transcript yet,
+        # so reading the transcript gives the previous turn's reply.
+        reply = event.get("last_assistant_message")
+        if not isinstance(reply, str) or not reply.strip():
+            reply = last_assistant_text(transcript)
+        summary = summarize_reply(reply)
         if summary:
             meta["task"] = summary
     elif hook == "SessionStart":
         meta.setdefault("status", "idle")
         meta.setdefault("task", "")
+        # A fresh or resumed process has no background tasks of its own yet.
+        meta["background"] = []
         # On resume, try to seed task from the transcript.
         if not meta.get("task"):
             summary = summarize_reply(last_assistant_text(transcript))
@@ -150,6 +184,7 @@ def main():
                 meta["task"] = summary
     elif hook == "SessionEnd":
         meta["status"] = "finished"
+        meta["background"] = []
 
     try:
         tmp = path.with_suffix(".json.tmp")

@@ -1,7 +1,7 @@
 export interface TileRect { x: number; y: number; w: number; h: number; z: number }
 
 export interface SessionMeta {
-  status?: 'working' | 'waiting' | 'finished' | 'idle';
+  status?: 'working' | 'background' | 'waiting' | 'finished' | 'idle';
   task?: string;
   cwd?: string;
   preview_url?: string;

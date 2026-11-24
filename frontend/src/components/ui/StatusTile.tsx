@@ -1,4 +1,4 @@
-import { Check, CircleDashed, LoaderCircle, MessageCircleQuestion, SquareTerminal } from 'lucide-react';
+import { Check, CircleDashed, Hourglass, LoaderCircle, MessageCircleQuestion, SquareTerminal } from 'lucide-react';
 import { STATUS, type SessionStatus } from '../../lib/sessions';
 
 interface StatusTileProps {
@@ -19,6 +19,7 @@ export default function StatusTile({ status, size = 38 }: StatusTileProps) {
       aria-hidden="true"
     >
       {status === 'working' && <LoaderCircle size={icon} strokeWidth={2.25} className="anim-spin" style={{ animationDuration: '1.6s' }} />}
+      {status === 'background' && <Hourglass size={icon} strokeWidth={2} />}
       {status === 'waiting' && <MessageCircleQuestion size={icon} strokeWidth={2} />}
       {status === 'finished' && <Check size={icon} strokeWidth={2.5} />}
       {status === 'idle' && <CircleDashed size={icon} strokeWidth={2} />}

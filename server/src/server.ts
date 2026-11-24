@@ -582,12 +582,13 @@ if (fs.existsSync(distPath)) {
 
 // Session management
 interface SessionMeta {
-  status?: 'working' | 'waiting' | 'finished' | 'idle';
+  status?: 'working' | 'background' | 'waiting' | 'finished' | 'idle';
   task?: string;
   cwd?: string;
   preview_url?: string;
   claude_session_id?: string;
   updated_at?: number;
+  background?: { type: string; description?: string }[];
 }
 
 interface Session {
@@ -614,6 +615,7 @@ function readSessionMeta(sessionName: string): SessionMeta | undefined {
       preview_url: parsed.preview_url,
       claude_session_id: parsed.claude_session_id,
       updated_at: parsed.updated_at,
+      background: Array.isArray(parsed.background) ? parsed.background : undefined,
     };
   } catch {
     return undefined;

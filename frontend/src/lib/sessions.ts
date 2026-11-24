@@ -1,6 +1,12 @@
 // Shared session vocabulary for the home screen and the terminal header.
 
-export type SessionStatus = 'working' | 'waiting' | 'finished' | 'idle';
+export type SessionStatus = 'working' | 'background' | 'waiting' | 'finished' | 'idle';
+
+/** A subagent or background shell still running after Claude's turn ended. */
+export interface BackgroundTask {
+  type: string;
+  description?: string;
+}
 
 export interface SessionMeta {
   status?: SessionStatus;
@@ -9,6 +15,7 @@ export interface SessionMeta {
   preview_url?: string;
   claude_session_id?: string;
   updated_at?: number;
+  background?: BackgroundTask[];
 }
 
 export interface Session {
@@ -29,10 +36,40 @@ export interface ContextInfo {
 export const STATUS: Record<SessionStatus, { label: string; tone: string }> = {
   // "Waiting" is the one that needs the user, so it gets the accent.
   working: { label: 'Working', tone: 'var(--info)' },
+  // Turn ended but subagents / background shells are still running: busy, not
+  // waiting on the user, so it shares Working's tone rather than the accent.
+  background: { label: 'Background', tone: 'var(--info)' },
   waiting: { label: 'Waiting for you', tone: 'var(--accent)' },
   finished: { label: 'Finished', tone: 'var(--ok)' },
   idle: { label: 'Idle', tone: 'var(--ink-3)' },
 };
+
+/** "2 agents, 1 shell" for the running background tasks, or '' when none. */
+export function backgroundSummary(meta?: SessionMeta): string {
+  const tasks = Array.isArray(meta?.background) ? meta.background : [];
+  if (!tasks.length) return '';
+  const counts = new Map<string, number>();
+  for (const t of tasks) {
+    const kind = t?.type === 'subagent' ? 'agent' : t?.type === 'shell' ? 'shell' : 'task';
+    counts.set(kind, (counts.get(kind) || 0) + 1);
+  }
+  return [...counts].map(([k, n]) => `${n} ${k}${n === 1 ? '' : 's'}`).join(', ');
+}
+
+/** One line per running background task, for tooltips. */
+export function backgroundDetail(meta?: SessionMeta): string {
+  const tasks = Array.isArray(meta?.background) ? meta.background : [];
+  return tasks.map((t) => `${t.type === 'subagent' ? 'Agent' : t.type === 'shell' ? 'Shell' : 'Task'}: ${t.description || '…'}`).join('\n');
+}
+
+/** Status wording with background work folded in: "Waiting on 2 agents",
+ *  "Working · 1 shell in background". */
+export function statusLabel(meta: SessionMeta | undefined, status: SessionStatus): string {
+  const bg = backgroundSummary(meta);
+  if (status === 'background') return bg ? `Waiting on ${bg}` : STATUS.background.label;
+  if (status === 'working' && bg) return `${STATUS.working.label} · ${bg} in background`;
+  return STATUS[status].label;
+}
 
 export function statusOf(meta?: SessionMeta): SessionStatus | null {
   return meta?.status && STATUS[meta.status] ? meta.status : null;
