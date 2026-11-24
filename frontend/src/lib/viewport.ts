@@ -62,7 +62,11 @@ function measure(): void {
   if (!editing) baseline = Math.max(height, window.innerHeight);
 
   const root = document.documentElement;
-  root.style.setProperty('--app-h', `${height}px`);
+  // With the keyboard down, never be shorter than the layout viewport: iOS
+  // can keep reporting a short visualViewport after the keyboard closes,
+  // which left a bare strip under the key bar.
+  const appHeight = keyboardOpen ? height : Math.max(height, Math.round(window.innerHeight));
+  root.style.setProperty('--app-h', `${appHeight}px`);
   root.style.setProperty('--app-top', `${top}px`);
   if (keyboardOpen) root.dataset.kb = 'open';
   else delete root.dataset.kb;

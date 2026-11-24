@@ -1047,6 +1047,19 @@ html[data-kb='open'] {
     }
   }
 
+  /* Soft keyboard up: every row counts, so the bar slims down. */
+  html[data-kb='open'] .keybar {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  html[data-kb='open'] .keybar-grid {
+    gap: 3px;
+  }
+  html[data-kb='open'] .key {
+    height: 32px;
+    border-radius: 7px;
+  }
+
   /* Modifier, armed for the next key. */
   .key[data-mod='armed'] {
     color: var(--accent);
