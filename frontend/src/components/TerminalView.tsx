@@ -144,6 +144,7 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
             context={context}
             onConnectionChange={handleConnectionChange}
             active={activeTab === 'terminal'}
+            autoFocus
           />
         </div>
         {filesVisited && (

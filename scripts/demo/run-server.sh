@@ -10,7 +10,15 @@ chmod 700 "$DEMO_RUNTIME_DIR"
 
 contexts_env=()
 contexts_file="$(demo_write_contexts)"
-[ -n "$contexts_file" ] && contexts_env=("CONTEXTS_CONFIG=$contexts_file")
+if [ -n "$contexts_file" ]; then
+  contexts_env=("CONTEXTS_CONFIG=$contexts_file")
+  # The server starts a context's tmux server on demand when none is running.
+  # One started that way belongs to another account and is NOT stopped with
+  # this process; run-tmux.sh (or stop.sh afterwards) takes care of that.
+  for u in $(demo_agent_users); do
+    [ -S "$(demo_ctx_socket "$u")" ] || echo "demo: no tmux server for $u yet (run-tmux.sh not running?); clean up with scripts/demo/stop.sh" >&2
+  done
+fi
 
 cd "$DEMO_REPO/server"
 

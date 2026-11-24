@@ -17,16 +17,25 @@ interface TerminalPaneProps {
   onConnectionChange?: (connected: boolean, connecting: boolean) => void;
   /** False while mounted but hidden behind another tab. */
   active?: boolean;
+  /** Focus the terminal when it opens (pointer devices only). */
+  autoFocus?: boolean;
 }
 
 function isTextField(el: Element | null): boolean {
   return !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT');
 }
 
-export default function TerminalPane({ sessionName, context, onConnectionChange, active = true }: TerminalPaneProps) {
+export default function TerminalPane({ sessionName, context, onConnectionChange, active = true, autoFocus = false }: TerminalPaneProps) {
   const [handle, setHandle] = useState<TerminalHandle | null>(null);
   const handleRef = useRef<TerminalHandle | null>(null);
   useEffect(() => { handleRef.current = handle; }, [handle]);
+
+  // With a hardware keyboard, opening a terminal means typing in it. On
+  // touch screens focus would raise the soft keyboard over the output the
+  // user came to look at, so there it waits for a tap.
+  useEffect(() => {
+    if (autoFocus && handle && active && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) handle.focus();
+  }, [autoFocus, handle, active]);
 
   // Sticky modifiers. The ref is what input handlers read (they outlive
   // renders); the state is what the key bar draws.

@@ -15,7 +15,11 @@ agents="$(demo_agent_users)"
 stop_all() {
   trap - TERM INT EXIT
   demo_tmux kill-server 2>/dev/null || true
-  for u in $agents; do demo_agent_tmux "$u" kill-server 2>/dev/null || true; done
+  rm -f "$DEMO_TMUX_SOCKET"
+  for u in $agents; do
+    demo_agent_tmux "$u" kill-server 2>/dev/null || true
+    sudo -n -u "$u" -- rm -f "$(demo_ctx_socket "$u")" 2>/dev/null || true
+  done
 }
 trap 'stop_all; exit 0' TERM INT
 trap stop_all EXIT
