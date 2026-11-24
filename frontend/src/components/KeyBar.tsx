@@ -30,6 +30,7 @@ interface KeyBarProps {
 
 const REPEAT_DELAY = 380;
 const REPEAT_EVERY = 65;
+const MOVE_SLOP = 10;   // px a finger may drift and still count as a tap
 
 interface KeyProps {
   label: ReactNode;
@@ -50,16 +51,22 @@ interface KeyProps {
 
 function Key({ label, title, className, onPress, repeat, onClick, pressed, mod, haptics }: KeyProps) {
   const [down, setDown] = useState(false);
-  const timers = useRef<{ delay: number; every: number }>({ delay: 0, every: 0 });
+  // A press only counts if the finger lifts where it landed: the row scrolls
+  // sideways, so a swipe across the keys must not type anything.
+  const gesture = useRef({ x: 0, y: 0, live: false, repeated: false, swiped: false, delay: 0, every: 0 });
   // Held keys repeat from a timer: it must call the latest handler (the
   // modifiers may have changed since the press began).
   const onPressRef = useRef(onPress);
   useEffect(() => { onPressRef.current = onPress; });
 
   const stop = useCallback(() => {
-    window.clearTimeout(timers.current.delay);
-    window.clearInterval(timers.current.every);
-    timers.current = { delay: 0, every: 0 };
+    const g = gesture.current;
+    // pointercancel = the browser took the gesture over to scroll the row.
+    window.clearTimeout(g.delay);
+    window.clearInterval(g.every);
+    g.delay = 0;
+    g.every = 0;
+    g.live = false;
     setDown(false);
   }, []);
 
@@ -67,19 +74,40 @@ function Key({ label, title, className, onPress, repeat, onClick, pressed, mod, 
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const g = gesture.current;
+    g.x = e.clientX;
+    g.y = e.clientY;
+    g.live = true;
+    g.repeated = false;
+    g.swiped = false;
     setDown(true);
-    haptic(haptics);
-    // Click-activated keys must leave the gesture alone so the browser still
-    // turns it into a click; the mousedown handler below is what keeps focus
-    // (and with it the soft keyboard's state) where it is.
-    if (!onPress) return;
-    e.preventDefault();
-    onPressRef.current?.();
-    if (repeat) {
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
-      timers.current.delay = window.setTimeout(() => {
-        timers.current.every = window.setInterval(() => onPressRef.current?.(), REPEAT_EVERY);
+    // Arrows held in place repeat; the first repeat doubles as the press.
+    if (onPress && repeat) {
+      g.delay = window.setTimeout(() => {
+        if (!g.live) return;
+        g.repeated = true;
+        haptic(haptics);
+        onPressRef.current?.();
+        g.every = window.setInterval(() => onPressRef.current?.(), REPEAT_EVERY);
       }, REPEAT_DELAY);
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const g = gesture.current;
+    if (g.live && Math.hypot(e.clientX - g.x, e.clientY - g.y) > MOVE_SLOP) {
+      g.swiped = true;
+      stop();
+    }
+  };
+
+  const handlePointerUp = () => {
+    const g = gesture.current;
+    const fire = g.live && !g.repeated && onPress;
+    stop();
+    if (fire) {
+      haptic(haptics);
+      onPressRef.current?.();
     }
   };
 
@@ -93,13 +121,14 @@ function Key({ label, title, className, onPress, repeat, onClick, pressed, mod, 
       data-mod={mod}
       className={`key ${down ? 'is-pressed' : ''} ${className ?? ''}`}
       onPointerDown={handlePointerDown}
-      onPointerUp={stop}
-      onPointerCancel={stop}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => { gesture.current.swiped = true; stop(); }}
       onPointerLeave={stop}
       onMouseDown={(e) => e.preventDefault()}
       onContextMenu={(e) => e.preventDefault()}
       onClick={(e) => {
-        if (onClick) onClick();
+        if (onClick) { if (!gesture.current.swiped) onClick(); return; }
         // Keyboard activation (Enter/Space on a focused key) has no pointer.
         else if (e.detail === 0) onPressRef.current?.();
       }}
@@ -126,6 +155,7 @@ export default function KeyBar({ mods, onKey, onModifier, onAction, composeOpen,
         <Key label="ctrl" title="Control (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('ctrl')} pressed={mods.ctrl !== 'off'} onPress={() => onModifier('ctrl')} />
         <Key label="alt" title="Alt (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('alt')} pressed={mods.alt !== 'off'} onPress={() => onModifier('alt')} />
         {key('interrupt', '^C', 'Interrupt (Ctrl+C)', 'key-danger')}
+        <Key label={<ClipboardPaste {...icon} />} title="Paste" className="key-quiet" haptics={haptics} onClick={() => onAction('paste')} />
         {key('left', <ArrowLeft {...icon} />, 'Left')}
         {key('down', <ArrowDown {...icon} />, 'Down')}
         {key('up', <ArrowUp {...icon} />, 'Up')}
@@ -138,7 +168,6 @@ export default function KeyBar({ mods, onKey, onModifier, onAction, composeOpen,
         {key('tilde', <span className="text-[15px]">~</span>, 'Tilde')}
         {key('prefix', '^B', 'Ctrl+B (tmux prefix)', 'key-quiet')}
         <Key label={<PenLine {...icon} />} title="Compose: type or dictate, then send" className="key-quiet" haptics={haptics} pressed={composeOpen} onClick={() => onAction('compose')} />
-        <Key label={<ClipboardPaste {...icon} />} title="Paste" className="key-quiet" haptics={haptics} onClick={() => onAction('paste')} />
         <Key label={<Copy {...icon} />} title="Copy the selection, or select text" className="key-quiet" haptics={haptics} onClick={() => onAction('copy')} />
       </div>
       <Key

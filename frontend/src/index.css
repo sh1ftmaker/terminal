@@ -843,7 +843,9 @@ html[data-kb='open'] {
      home indicator (--safe-b is 0 while the keyboard is up). The composer,
      when open, takes the bottom and pads for it instead. */
   .term-pane:not(.composing) {
-    padding-bottom: var(--safe-b);
+    /* Only part of the inset: the home indicator is a thin line, and a
+       terminal row under its edge stays readable. */
+    padding-bottom: max(0px, calc(var(--safe-b) - 20px));
     background: var(--term-bg);
   }
 
@@ -1008,6 +1010,8 @@ html[data-kb='open'] {
     -webkit-overflow-scrolling: touch;
   }
   .keybar .key {
+    /* Horizontal swipes scroll the row; keys fire on release. */
+    touch-action: pan-x;
     flex: 0 0 auto;
     min-width: 38px;
     height: 34px;
