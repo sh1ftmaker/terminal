@@ -40,8 +40,9 @@ interface TerminalProps {
 // and the wheel (see sendWheel). MIN_ROWS only guards degenerate layouts.
 const MIN_ROWS = 6;
 const INITIAL_ROWS = 24;
-// Pixels of finger travel per wheel notch sent to tmux.
-const SWIPE_STEP = 14;
+// Rows of finger (or wheel) travel per wheel notch sent to tmux. tmux moves
+// 5 lines per notch in copy mode; apps like Claude Code move about 3.
+const ROWS_PER_NOTCH = 3;
 const MIN_COLS = 20;
 const FONT_FAMILY = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
 // Must match the .xterm padding in index.css.
@@ -599,7 +600,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       e.preventDefault();
       const px = e.deltaMode === 1 ? e.deltaY * rowHeightOf(containerRef.current!, terminal) : e.deltaY;
       wheelAcc += px;
-      const step = rowHeightOf(containerRef.current!, terminal);
+      const step = rowHeightOf(containerRef.current!, terminal) * ROWS_PER_NOTCH;
       while (Math.abs(wheelAcc) >= step) {
         sendWheel(wheelAcc < 0, e.clientX, e.clientY);
         wheelAcc -= Math.sign(wheelAcc) * step;
@@ -765,9 +766,10 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       swipeAcc += t.clientY - swipeY;
       swipeY = t.clientY;
       if (e.cancelable) e.preventDefault();
-      while (Math.abs(swipeAcc) >= SWIPE_STEP) {
+      const step = rowHeightOf(containerRef.current!, terminal) * ROWS_PER_NOTCH;
+      while (Math.abs(swipeAcc) >= step) {
         sendWheel(swipeAcc > 0, t.clientX, t.clientY);
-        swipeAcc -= Math.sign(swipeAcc) * SWIPE_STEP;
+        swipeAcc -= Math.sign(swipeAcc) * step;
       }
     };
     const handleSwipeEnd = () => { swipeY = null; };
