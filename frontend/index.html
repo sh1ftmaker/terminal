@@ -1,19 +1,56 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!--
+      viewport-fit=cover: draw under the notch / home indicator (we pad with
+        safe-area insets ourselves).
+      interactive-widget=resizes-content: Android Chrome shrinks the layout
+        when the soft keyboard opens. iOS ignores it; src/lib/viewport.ts
+        follows visualViewport there.
+      maximum-scale=1: stops iOS zooming the page when the terminal's hidden
+        input is focused.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#1a1a2e" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <meta name="apple-mobile-web-app-title" content="Terminal" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="./manifest.webmanifest" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
     <title>Terminal</title>
+    <script>
+      // Runs before first paint, so the page never flashes the wrong theme.
+      (function () {
+        // Relative asset URLs need the mount path to end in a slash
+        // (/lp/3102 -> /lp/3102/).
+        if (/^\/lp\/\d+$/.test(location.pathname)) {
+          location.replace(location.pathname + '/' + location.search + location.hash);
+          return;
+        }
+        // Same key as src/lib/storage.ts: namespaced by the mount path unless
+        // the app sits at the origin root. The manifest link is the one
+        // mount-relative URL available this early.
+        var pref = 'system';
+        try {
+          var base = new URL('.', document.querySelector('link[rel="manifest"]').href).pathname;
+          var key = (base === '/' ? '' : base + '|') + 'terminal.settings';
+          pref = JSON.parse(localStorage.getItem(key) || '{}').theme || 'system';
+        } catch (e) {}
+        var dark = pref === 'dark' || (pref !== 'light' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#1a1a2e' : '#f1f5f9');
+      })();
+    </script>
     <style>
-      html, body {
-        background-color: #1a1a2e;
-      }
+      html { background: #1a1a2e; }
+      html[data-theme='light'] { background: #f1f5f9; }
     </style>
   </head>
   <body>

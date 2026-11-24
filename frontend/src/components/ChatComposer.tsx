@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { store } from '../lib/storage';
 
 interface ChatComposerProps {
   onSend: (text: string) => void;
@@ -11,13 +12,13 @@ interface ChatComposerProps {
 export default function ChatComposer({ onSend, onInterrupt, disabled, isStreaming, sessionName }: ChatComposerProps) {
   const storageKey = `chat-draft-${sessionName}`;
   const [text, setText] = useState(() => {
-    try { return localStorage.getItem(storageKey) || ''; } catch { return ''; }
+    return store.get(storageKey) || '';
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Restore draft when sessionName changes
   useEffect(() => {
-    try { setText(localStorage.getItem(storageKey) || ''); } catch { setText(''); }
+    setText(store.get(storageKey) || '');
   }, [storageKey]);
 
   // Auto-resize textarea whenever text changes (including draft restore)
@@ -33,9 +34,9 @@ export default function ChatComposer({ onSend, onInterrupt, disabled, isStreamin
   useEffect(() => {
     try {
       if (text) {
-        localStorage.setItem(storageKey, text);
+        store.set(storageKey, text);
       } else {
-        localStorage.removeItem(storageKey);
+        store.remove(storageKey);
       }
     } catch { /* ignore */ }
   }, [text, storageKey]);
@@ -45,7 +46,7 @@ export default function ChatComposer({ onSend, onInterrupt, disabled, isStreamin
     if (!trimmed || disabled) return;
     onSend(trimmed);
     setText('');
-    try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    store.remove(storageKey);
   }, [text, disabled, onSend, storageKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
