@@ -31,7 +31,7 @@ session scratch    "$DEMO_WORKSPACE"
 
 meta api-server working  "Adding rate limiting to the request handler" "$DEMO_WORKSPACE/api"
 meta web-ui     waiting  "Should the status page poll or use server-sent events?" "$DEMO_WORKSPACE/web" \
-  "http://localhost:${DEMO_PORT}/api/files/stream?path=${DEMO_WORKSPACE}/preview.html"
+  "http://localhost:${DEMO_PREVIEW_PORT}/"
 meta deploy     finished "Deployed build 415 to staging" "$DEMO_WORKSPACE"
 
 T list-sessions

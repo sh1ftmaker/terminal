@@ -11,6 +11,7 @@
 DEMO_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEMO_NAME="${DEMO_NAME:-bt-fable}"
 DEMO_PORT="${DEMO_PORT:-3102}"
+DEMO_PREVIEW_PORT="${DEMO_PREVIEW_PORT:-3112}"
 DEMO_TMUX_SOCKET="/tmp/${DEMO_NAME}-tmux.sock"
 DEMO_META_DIR="/tmp/${DEMO_NAME}-meta"
 DEMO_RUNTIME_DIR="/tmp/${DEMO_NAME}-run"
