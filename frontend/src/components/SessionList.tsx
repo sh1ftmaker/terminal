@@ -259,7 +259,7 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
       </header>
 
       <main className="scroll-y flex-1 min-h-0">
-        <div className="w-full max-w-3xl mx-auto pt-1" style={{ ...gutter, paddingBottom: 'calc(104px + var(--safe-b))' }}>
+        <div className="w-full max-w-3xl mx-auto pt-1" style={{ ...gutter, paddingBottom: 'calc(24px + var(--safe-b))' }}>
           {offline && (
             <div className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 mb-3 text-[13.5px] bg-danger-soft text-danger" role="status">
               <WifiOff size={16} className="flex-shrink-0" /> Can't reach the server. Retrying…
@@ -332,27 +332,20 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
                       ))}
                     </ul>
                   </section>
-                ))
+                )).concat(
+                  <button
+                    key="new-session"
+                    className="btn btn-primary w-full !min-h-[48px] mt-1"
+                    onClick={() => openNew()}
+                  >
+                    <Plus size={19} strokeWidth={2.25} /> New session
+                  </button>,
+                )
               )}
             </div>
           )}
         </div>
       </main>
-
-      {/* Floating action, kept inside the content column on wide screens */}
-      {pane === 'sessions' && !loading && visible.length > 0 && (
-        <div className="absolute inset-x-0 bottom-0 z-10 pointer-events-none">
-          <div className="w-full max-w-3xl mx-auto flex justify-end" style={{ ...gutter, paddingBottom: 'calc(18px + var(--safe-b))' }}>
-            <button
-              className="btn btn-primary pointer-events-auto !rounded-full !min-h-[52px] !pl-4 !pr-5 anim-rise"
-              style={{ boxShadow: 'var(--shadow-pop)' }}
-              onClick={() => openNew()}
-            >
-              <Plus size={20} strokeWidth={2.25} /> New session
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* New session */}
       <Sheet
