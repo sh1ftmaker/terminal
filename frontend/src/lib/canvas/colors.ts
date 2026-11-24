@@ -16,9 +16,9 @@ export function sessionColor(key: string): string {
 // marks the session that is waiting for the user. Fixed values rather than
 // theme tokens, because tile screens stay dark in both canvas themes.
 export const STATUS_COLORS: Record<string, string> = {
-  working: '#74b4e8',
-  background: '#74b4e8',
-  waiting: '#f5a04a',
-  finished: '#86c47c',
-  idle: '#857d72',
+  working: '#60a5fa',
+  background: '#60a5fa',
+  waiting: '#4fd1c5',
+  finished: '#4ade80',
+  idle: '#7a879c',
 };

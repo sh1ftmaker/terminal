@@ -12,7 +12,7 @@ const media = typeof window !== 'undefined' && window.matchMedia
   ? window.matchMedia('(prefers-color-scheme: light)')
   : null;
 
-const CHROME: Record<ResolvedTheme, string> = { dark: '#141312', light: '#f5f2eb' };
+const CHROME: Record<ResolvedTheme, string> = { dark: '#1a1a2e', light: '#f1f5f9' };
 
 export function resolveTheme(): ResolvedTheme {
   const pref = getSettings().theme;
@@ -63,57 +63,58 @@ export function useThemeKey(): string {
 }
 
 // --- Terminal palettes -----------------------------------------------------
-// Tuned against their backgrounds: every colour except ANSI black clears
-// 4:1 on dark and on paper.
+// Dark is the original app's palette (navy, slate, cyan). Light is a slate
+// version tuned for paper; the minimum-contrast floor below covers the rest.
 
 const DARK: ITheme = {
-  background: '#141312',
-  foreground: '#ece7df',
-  cursor: '#f5a04a',
-  cursorAccent: '#141312',
-  selectionBackground: 'rgba(245, 160, 74, 0.32)',
-  selectionInactiveBackground: 'rgba(245, 160, 74, 0.2)',
-  black: '#3a3531',
-  red: '#f07a68',
-  green: '#86c47c',
-  yellow: '#e8b85c',
-  blue: '#74b4e8',
-  magenta: '#c9a0f0',
-  cyan: '#6cc9c0',
-  white: '#d6d0c5',
-  brightBlack: '#857d72',
-  brightRed: '#ff9a88',
-  brightGreen: '#a6dd9a',
-  brightYellow: '#f7d07e',
-  brightBlue: '#9ccdf6',
-  brightMagenta: '#ddbdff',
-  brightCyan: '#8fe2d9',
-  brightWhite: '#f8f4ec',
+  background: '#1a1a2e',
+  foreground: '#e2e8f0',
+  cursor: '#4fd1c5',
+  cursorAccent: '#1a1a2e',
+  selectionBackground: 'rgba(79, 209, 197, 0.4)',
+  selectionInactiveBackground: 'rgba(79, 209, 197, 0.22)',
+  selectionForeground: '#ffffff',
+  black: '#3f3f46',
+  red: '#f87171',
+  green: '#4ade80',
+  yellow: '#facc15',
+  blue: '#60a5fa',
+  magenta: '#c084fc',
+  cyan: '#4fd1c5',
+  white: '#e2e8f0',
+  brightBlack: '#71717a',
+  brightRed: '#fca5a5',
+  brightGreen: '#86efac',
+  brightYellow: '#fde047',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#5eead4',
+  brightWhite: '#f8fafc',
 };
 
 const LIGHT: ITheme = {
-  background: '#fbf9f4',
-  foreground: '#1e1b17',
-  cursor: '#ae4a0a',
-  cursorAccent: '#fbf9f4',
-  selectionBackground: 'rgba(174, 74, 10, 0.22)',
-  selectionInactiveBackground: 'rgba(174, 74, 10, 0.14)',
-  black: '#1e1b17',
+  background: '#f8fafc',
+  foreground: '#0f172a',
+  cursor: '#0f766e',
+  cursorAccent: '#f8fafc',
+  selectionBackground: 'rgba(15, 118, 110, 0.22)',
+  selectionInactiveBackground: 'rgba(15, 118, 110, 0.14)',
+  black: '#0f172a',
   red: '#b5362a',
   green: '#2b7a36',
   yellow: '#8f6200',
   blue: '#1b62a6',
   magenta: '#7a45b5',
-  cyan: '#0e7269',
-  white: '#6e675c',
-  brightBlack: '#6e675c',
+  cyan: '#0e7490',
+  white: '#64748b',
+  brightBlack: '#64748b',
   brightRed: '#c13f2f',
   brightGreen: '#2f8239',
   brightYellow: '#996a00',
   brightBlue: '#2270ba',
   brightMagenta: '#8850c8',
-  brightCyan: '#107d73',
-  brightWhite: '#3f3a33',
+  brightCyan: '#0e7490',
+  brightWhite: '#334155',
 };
 
 export function terminalTheme(mode: ResolvedTheme = resolveTerminalTheme()): ITheme {

@@ -52,7 +52,7 @@ export default function SessionTile({
   const shown = drag ?? rect;
   const color = sessionColor(session.key);
   const status = session.meta?.status;
-  const statusColor = status ? STATUS_COLORS[status] : '#6b645a';
+  const statusColor = status ? STATUS_COLORS[status] : '#64748b';
 
   const html = useMemo(() => (frame ? ansiToHtml(frame.lines) : ''), [frame]);
 
@@ -237,7 +237,7 @@ export default function SessionTile({
           >
             <pre
               className="m-0 font-mono"
-              style={{ fontSize, lineHeight: `${lineH}px`, whiteSpace: 'pre', color: '#d6d0c5' }}
+              style={{ fontSize, lineHeight: `${lineH}px`, whiteSpace: 'pre', color: '#cbd5e1' }}
               dangerouslySetInnerHTML={{ __html: html }}
             />
             {/* Live cursor block */}
@@ -261,7 +261,7 @@ export default function SessionTile({
           <button
             className="absolute top-1.5 right-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono"
             style={{
-              background: 'color-mix(in srgb, var(--cv-accent) 20%, #141312)',
+              background: 'color-mix(in srgb, var(--cv-accent) 20%, #1a1a2e)',
               color: 'var(--cv-accent)',
               border: '1px solid color-mix(in srgb, var(--cv-accent) 40%, transparent)',
             }}

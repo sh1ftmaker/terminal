@@ -82,28 +82,28 @@ html[data-kb='open'] {
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #141312;
-  --surface: #1c1a18;
-  --surface-2: #262320;
-  --surface-3: #322e2a;
-  --line: #2a2724;
-  --line-strong: #3d3833;
+  --bg: #1a1a2e;
+  --surface: #212139;
+  --surface-2: #252540;
+  --surface-3: #2d2d4a;
+  --line: #2a2a45;
+  --line-strong: #3b3b5c;
 
-  --ink: #ece7df;
-  --ink-2: #a9a196;
-  --ink-3: #857d72;
+  --ink: #e2e8f0;
+  --ink-2: #94a3b8;
+  --ink-3: #7a879c;
 
-  --accent: #f5a04a;
-  --accent-ink: #1d1206;
-  --ok: #86c47c;
-  --info: #74b4e8;
-  --warn: #e8b85c;
-  --danger: #f07a68;
-  --violet: #b9a0f2;
-  --teal: #6cc9c0;
+  --accent: #4fd1c5;
+  --accent-ink: #0b2a27;
+  --ok: #4ade80;
+  --info: #60a5fa;
+  --warn: #facc15;
+  --danger: #f87171;
+  --violet: #c084fc;
+  --teal: #5eead4;
 
-  --term-bg: #141312;
-  --scrim: rgba(8, 7, 6, 0.6);
+  --term-bg: #1a1a2e;
+  --scrim: rgba(10, 10, 24, 0.6);
   --shadow-pop: 0 18px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-key: 0 1px 0 rgba(0, 0, 0, 0.45);
   --key-top: rgba(255, 255, 255, 0.045);
@@ -112,37 +112,37 @@ html[data-kb='open'] {
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg: #f5f2eb;
-  --surface: #fdfbf7;
-  --surface-2: #ece7dd;
-  --surface-3: #e0d9cc;
-  --line: #e4ded1;
-  --line-strong: #cdc5b5;
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface-2: #e2e8f0;
+  --surface-3: #cbd5e1;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
 
-  --ink: #1e1b17;
-  --ink-2: #5c554b;
-  --ink-3: #756d61;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #64748b;
 
-  --accent: #ae4a0a;
-  --accent-ink: #fff9f2;
-  --ok: #2e7d38;
-  --info: #1d68ad;
-  --warn: #8f5f00;
-  --danger: #bd3a2b;
-  --violet: #6c4bc4;
-  --teal: #0e7269;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --ok: #15803d;
+  --info: #1d4ed8;
+  --warn: #a16207;
+  --danger: #b91c1c;
+  --violet: #7e22ce;
+  --teal: #0e7490;
 
-  --term-bg: #fbf9f4;
-  --statusbar: #1e1b17;
-  --scrim: rgba(40, 33, 24, 0.38);
-  --shadow-pop: 0 18px 48px rgba(60, 45, 20, 0.2), 0 2px 8px rgba(60, 45, 20, 0.1);
+  --term-bg: #f8fafc;
+  --statusbar: #0f172a;
+  --scrim: rgba(15, 23, 42, 0.38);
+  --shadow-pop: 0 18px 48px rgba(20, 30, 60, 0.2), 0 2px 8px rgba(20, 30, 60, 0.1);
   --shadow-key: 0 1px 0 rgba(90, 70, 40, 0.18);
   --key-top: rgba(255, 255, 255, 0.6);
 }
 
 /* The terminal can stay dark inside the light theme (Settings). */
 :root[data-term='dark'] {
-  --term-bg: #141312;
+  --term-bg: #1a1a2e;
 }
 
 :root {
@@ -1159,26 +1159,26 @@ html[data-kb='open'] {
 
 @layer components {
   .canvas-root {
-    --cv-bg: #100f0e;
-    --cv-panel: rgba(34, 31, 28, 0.62);
-    --cv-edge: rgba(236, 231, 223, 0.11);
-    --cv-ink: #ece7df;
-    --cv-ink-dim: #a9a196;
-    --cv-accent: #f5a04a;
-    --cv-dot: rgba(236, 231, 223, 0.09);
+    --cv-bg: #15152a;
+    --cv-panel: rgba(37, 37, 64, 0.62);
+    --cv-edge: rgba(226, 232, 240, 0.11);
+    --cv-ink: #e2e8f0;
+    --cv-ink-dim: #94a3b8;
+    --cv-accent: #4fd1c5;
+    --cv-dot: rgba(226, 232, 240, 0.09);
     background: var(--cv-bg);
     color: var(--cv-ink);
     font-family: var(--f-sans);
   }
 
   .canvas-root.canvas-day {
-    --cv-bg: #ece8de;
-    --cv-panel: rgba(253, 251, 247, 0.7);
-    --cv-edge: rgba(30, 27, 23, 0.13);
-    --cv-ink: #1e1b17;
-    --cv-ink-dim: #5c554b;
-    --cv-accent: #ae4a0a;
-    --cv-dot: rgba(30, 27, 23, 0.13);
+    --cv-bg: #e8edf3;
+    --cv-panel: rgba(255, 255, 255, 0.7);
+    --cv-edge: rgba(15, 23, 42, 0.13);
+    --cv-ink: #0f172a;
+    --cv-ink-dim: #475569;
+    --cv-accent: #0f766e;
+    --cv-dot: rgba(15, 23, 42, 0.13);
   }
 
   /* Ambient color wash; heavier veil when a background image is set */
@@ -1205,11 +1205,11 @@ html[data-kb='open'] {
     -webkit-backdrop-filter: blur(20px) saturate(140%);
     backdrop-filter: blur(20px) saturate(140%);
     border: 1px solid var(--cv-edge);
-    box-shadow: 0 8px 30px rgba(8, 7, 6, 0.38);
+    box-shadow: 0 8px 30px rgba(10, 10, 24, 0.38);
     border-radius: 14px;
   }
   .canvas-day .glass {
-    box-shadow: 0 8px 30px rgba(60, 45, 20, 0.14);
+    box-shadow: 0 8px 30px rgba(20, 30, 60, 0.14);
   }
 
   .canvas-stage { cursor: grab; }
@@ -1217,7 +1217,7 @@ html[data-kb='open'] {
   .canvas-dragging iframe { pointer-events: none; }
 
   .tile { transition: box-shadow 0.2s ease; }
-  .tile:hover { box-shadow: 0 12px 44px rgba(8, 7, 6, 0.5); }
+  .tile:hover { box-shadow: 0 12px 44px rgba(10, 10, 24, 0.5); }
   .tile-header {
     border-bottom: 1px solid var(--cv-edge);
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.04), transparent);
@@ -1225,11 +1225,11 @@ html[data-kb='open'] {
     flex-shrink: 0;
   }
   /* Terminal screens stay dark in both themes — ANSI default colors assume it */
-  .tile-screen { background: rgba(16, 15, 14, 0.82); }
-  .canvas-day .tile-screen { background: rgba(20, 19, 18, 0.94); }
+  .tile-screen { background: rgba(20, 20, 38, 0.82); }
+  .canvas-day .tile-screen { background: rgba(26, 26, 46, 0.94); }
   .tile-task {
-    color: #a9a196;
-    background: linear-gradient(to top, rgba(16, 15, 14, 0.94) 55%, transparent);
+    color: #94a3b8;
+    background: linear-gradient(to top, rgba(20, 20, 38, 0.94) 55%, transparent);
   }
   .tile-btn {
     width: 26px;
@@ -1287,7 +1287,7 @@ html[data-kb='open'] {
     box-shadow: 0 0 20px color-mix(in srgb, var(--cv-accent) 70%, transparent);
   }
   .voice-orb-nokey, .voice-orb-error {
-    background: color-mix(in srgb, #f07a68 55%, transparent);
+    background: color-mix(in srgb, #f87171 55%, transparent);
     color: #fff;
   }
 
