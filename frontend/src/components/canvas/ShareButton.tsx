@@ -136,14 +136,14 @@ export default function ShareButton({ url, headerHeight }: ShareButtonProps) {
             ))}
             {share && (
               <button
-                className="tile-btn px-2 ml-auto" style={{ width: 'auto', color: '#f87171' }}
+                className="tile-btn px-2 ml-auto" style={{ width: 'auto', color: '#f07a68' }}
                 disabled={busy} onClick={stop}
               >
                 stop
               </button>
             )}
           </div>
-          {error && <div style={{ color: '#f87171' }}>{error}</div>}
+          {error && <div style={{ color: '#f07a68' }}>{error}</div>}
           <div className="opacity-50 leading-snug">
             Anyone with the link can reach this port until it expires. No login is required on the share host.
           </div>

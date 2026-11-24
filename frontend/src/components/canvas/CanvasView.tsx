@@ -781,7 +781,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
             <div className="flex items-center gap-2 px-3 py-2 flex-shrink-0 border-b" style={{ borderColor: 'var(--cv-edge)' }}>
               <span
                 className={`w-2 h-2 rounded-full ${focusedStatus === 'working' ? 'animate-pulse' : ''}`}
-                style={{ backgroundColor: focusedStatus ? STATUS_COLORS[focusedStatus] : '#565b7a' }}
+                style={{ backgroundColor: focusedStatus ? STATUS_COLORS[focusedStatus] : '#6b645a' }}
               />
               <span className="font-mono text-sm font-semibold lowercase" style={{ color: sessionColor(focused.key) }}>
                 {focused.callsign}

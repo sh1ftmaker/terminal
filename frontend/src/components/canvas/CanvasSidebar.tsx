@@ -86,7 +86,7 @@ export default function CanvasSidebar({
                 >
                   <span
                     className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${st === 'working' ? 'animate-pulse' : ''}`}
-                    style={{ backgroundColor: st ? STATUS_COLORS[st] : '#565b7a' }}
+                    style={{ backgroundColor: st ? STATUS_COLORS[st] : '#6b645a' }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-1.5">

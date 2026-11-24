@@ -12,9 +12,12 @@ export function sessionColor(key: string): string {
   return SESSION_HUES[Math.abs(h) % SESSION_HUES.length];
 }
 
+// Same meaning as everywhere else in the app (lib/sessions.ts): the accent
+// marks the session that is waiting for the user. Fixed values rather than
+// theme tokens, because tile screens stay dark in both canvas themes.
 export const STATUS_COLORS: Record<string, string> = {
-  working: '#f6ad55',
-  waiting: '#4fd1c5',
-  finished: '#68d391',
-  idle: '#718096',
+  working: '#74b4e8',
+  waiting: '#f5a04a',
+  finished: '#86c47c',
+  idle: '#857d72',
 };

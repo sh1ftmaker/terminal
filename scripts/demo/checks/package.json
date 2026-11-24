@@ -1,0 +1,9 @@
+{
+  "name": "terminal-demo-checks",
+  "private": true,
+  "type": "module",
+  "description": "Browser checks and screenshots for the isolated demo instance",
+  "dependencies": {
+    "playwright-core": "^1.50.0"
+  }
+}

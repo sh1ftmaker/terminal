@@ -74,8 +74,16 @@ export async function getPushState(): Promise<PushState> {
     return { status: 'not-installed-ios', reason: 'Install to Home Screen first (Share → Add to Home Screen)' };
   }
   if (Notification.permission === 'denied') return { status: 'denied' };
-  const reg = await registerServiceWorker();
-  if (!reg) return { status: 'unsupported', reason: 'Service worker registration failed' };
+  // At the origin root the worker is registered up front, as always. Under a
+  // path prefix we are a guest on someone else's origin: just looking at the
+  // page should not leave a service worker behind, so it is only registered
+  // once the user actually turns notifications on (subscribeUserToPush).
+  const reg = BASE === '/' ? await registerServiceWorker() : await ownRegistration();
+  if (!reg) {
+    return BASE === '/'
+      ? { status: 'unsupported', reason: 'Service worker registration failed' }
+      : { status: 'unsubscribed' };
+  }
   return reconcileSubscription(reg);
 }
 
