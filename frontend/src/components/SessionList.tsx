@@ -30,7 +30,6 @@ interface SessionListProps {
 
 type Pane = 'sessions' | 'ports';
 const PANE_KEY = 'terminal.homePane';
-const CONTEXT_KEY = 'terminal.homeContext';
 
 const chipTone = (value: string) => ({ ['--chip']: value }) as React.CSSProperties;
 const toneVar = (value: string) => ({ ['--tone']: value }) as React.CSSProperties;
@@ -83,8 +82,6 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [pane, setPane] = useState<Pane>(() => (store.get(PANE_KEY) === 'ports' ? 'ports' : 'sessions'));
-  // '' = all contexts
-  const [savedContext, setSavedContext] = useState<string>(() => store.get(CONTEXT_KEY) || '');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsFor, setActionsFor] = useState<Session | null>(null);
   const [killTarget, setKillTarget] = useState<Session | null>(null);
@@ -100,9 +97,9 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
   const overview = useOverview(pane === 'ports');
   const pendingCount = pendingRequests(overview.data).length;
   const multiContext = contexts.length > 0;
-  // A saved filter for a context that no longer exists means "all".
-  const activeContext = multiContext && contexts.some((c) => c.name === savedContext) ? savedContext : '';
-  const activeInfo = contexts.find((c) => c.name === activeContext);
+  // The hub always shows every context (grouped); there is no per-user filter.
+  const activeContext = '';
+  const activeInfo = undefined as ContextInfo | undefined;
   const failures = useRef(0);
 
   const fetchSessions = useCallback(async () => {
@@ -131,18 +128,7 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
 
   useEffect(() => { store.set(PANE_KEY, pane); }, [pane]);
 
-  // Keep the selected context's pill in view (it may be saved from last time
-  // and sit beyond the edge of the row).
-  const ctxBarRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ctxBarRef.current?.querySelector('[aria-checked="true"]')?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
-  }, [activeContext, multiContext]);
   useEffect(() => { document.title = 'Terminal'; }, []);
-
-  const selectContext = (name: string) => {
-    setSavedContext(name);
-    store.set(CONTEXT_KEY, name);
-  };
 
   // Opens the sheet aimed at a context: the given one, else the one being
   // viewed, else the first (admin).
@@ -270,33 +256,6 @@ export default function SessionList({ onSelectSession, onSwitchView }: SessionLi
           )}
         </p>
 
-        {multiContext && (
-          <div ref={ctxBarRef} className="ctx-bar mt-3" role="radiogroup" aria-label="Context" style={gutter}>
-            <button className="ctx-chip" role="radio" aria-checked={activeContext === ''} onClick={() => selectContext('')}>
-              All <span className="ctx-count">{sessions.length}</span>
-            </button>
-            {contexts.map((c) => {
-              const mine = sessions.filter((s) => s.context === c.name);
-              const needsYou = mine.some((s) => s.meta?.status === 'waiting');
-              return (
-                <button
-                  key={c.name}
-                  className="ctx-chip"
-                  role="radio"
-                  aria-checked={activeContext === c.name}
-                  title={runsAs(c)}
-                  style={toneVar(contextTone(c.name))}
-                  onClick={() => selectContext(c.name)}
-                >
-                  <span className="status-dot" />
-                  {c.label || c.name}
-                  <span className="ctx-count">{mine.length}</span>
-                  {needsYou && <span className="status-dot" style={{ ...toneVar('var(--accent)'), width: 6, height: 6 }} aria-label="waiting for you" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </header>
 
       <main className="scroll-y flex-1 min-h-0">

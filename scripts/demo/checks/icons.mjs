@@ -4,9 +4,9 @@ import fs from 'fs';
 const PUB = `${REPO}frontend/public/`;
 // glyph: prompt chevron + cursor block, drawn on a 512 grid
 const glyph = (scale = 1) => `<g transform="translate(256 256) scale(${scale}) translate(-256 -256)">
-  <path d="M158 176l92 80-92 80" fill="none" stroke="#f5a04a" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="274" y="313" width="92" height="46" rx="12" fill="#ece7df"/></g>`;
-const defs = `<defs><radialGradient id="g" cx="0.3" cy="0.22" r="0.95"><stop offset="0" stop-color="#2a2521"/><stop offset="1" stop-color="#141312"/></radialGradient></defs>`;
+  <path d="M158 176l92 80-92 80" fill="none" stroke="#4fd1c5" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="274" y="313" width="92" height="46" rx="12" fill="#e2e8f0"/></g>`;
+const defs = `<defs><radialGradient id="g" cx="0.3" cy="0.22" r="0.95"><stop offset="0" stop-color="#2d2d4a"/><stop offset="1" stop-color="#1a1a2e"/></radialGradient></defs>`;
 const svg = (rx, scale) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">${defs}<rect width="512" height="512" rx="${rx}" fill="url(#g)"/>${glyph(scale)}</svg>`;
 const targets = [
   { file: 'icon-192.png', size: 192, rx: 114, scale: 1 },

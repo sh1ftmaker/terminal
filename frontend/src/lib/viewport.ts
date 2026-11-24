@@ -74,7 +74,8 @@ function measure(): void {
   // blurs and fades it. The app is already sized to the visible area, so undo
   // the pan right away. If iOS keeps panning back (it wants a focused field in
   // view), give up until the keyboard closes and rely on --app-top instead.
-  if (window.scrollY !== 0 || window.scrollX !== 0) {
+  // iOS can also shift only the visible area (offsetTop) with scrollY still 0.
+  if (window.scrollY !== 0 || window.scrollX !== 0 || top > 0) {
     const now = performance.now();
     if (now - unpanWindowStart > 1000) { unpanWindowStart = now; unpanCount = 0; }
     if (!keyboardOpen || unpanCount < 4) {
