@@ -24,6 +24,23 @@ const TIGHT_HEIGHT = 300;
 
 const TOUCH = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
 
+const STANDALONE = typeof window !== 'undefined' && (
+  window.matchMedia?.('(display-mode: standalone)').matches ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true
+);
+
+// Height of 100lvh in px, read from a hidden probe element.
+let lvhProbe: HTMLDivElement | null = null;
+function largeViewportHeight(): number {
+  if (!lvhProbe) {
+    lvhProbe = document.createElement('div');
+    lvhProbe.setAttribute('aria-hidden', 'true');
+    lvhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100lvh;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(lvhProbe);
+  }
+  return Math.round(lvhProbe.offsetHeight);
+}
+
 let state: ViewportState = { width: 0, height: 0, keyboardOpen: false };
 const listeners = new Set<() => void>();
 
@@ -62,10 +79,14 @@ function measure(): void {
   if (!editing) baseline = Math.max(height, window.innerHeight);
 
   const root = document.documentElement;
-  // With the keyboard down, never be shorter than the layout viewport: iOS
-  // can keep reporting a short visualViewport after the keyboard closes,
-  // which left a bare strip under the key bar.
-  const appHeight = keyboardOpen ? height : Math.max(height, Math.round(window.innerHeight));
+  // With the keyboard down, never be shorter than the full viewport. iOS (as
+  // an installed web app) keeps reporting a short visualViewport *and*
+  // innerHeight after the keyboard closes, which left a blank strip at the
+  // bottom. 100lvh isn't affected by the keyboard; it is only trusted when
+  // installed, since in a browser tab it includes the area under the toolbar.
+  const appHeight = keyboardOpen
+    ? height
+    : Math.max(height, Math.round(window.innerHeight), STANDALONE ? largeViewportHeight() : 0);
   root.style.setProperty('--app-h', `${appHeight}px`);
   root.style.setProperty('--app-top', `${top}px`);
   if (keyboardOpen) root.dataset.kb = 'open';
