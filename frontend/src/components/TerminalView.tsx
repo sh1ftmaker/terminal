@@ -1,10 +1,17 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import Terminal from './Terminal';
-import ControlBar from './ControlBar';
+import { lazy, Suspense, useState, useCallback, useEffect } from 'react';
+import { ChevronLeft, Ellipsis, Folder, Globe, SquareTerminal, Trash2 } from 'lucide-react';
+import TerminalPane from './TerminalPane';
 import FileBrowser from './FileBrowser';
-import ChatView from './ChatView.tsx';
-import { readClipboardText } from '../lib/clipboard';
+import SettingsSheet from './SettingsSheet';
+import ConfirmSheet from './ui/ConfirmSheet';
+import Segmented, { type SegmentedOption } from './ui/Segmented';
+import { toast } from './ui/toast';
 import { resolveFrameSrc } from '../lib/frameSrc';
+import { API } from '../lib/base';
+import { STATUS, contextTone, statusOf, type SessionMeta } from '../lib/sessions';
+
+// Not reachable from the tab bar at the moment; kept out of the main bundle.
+const ChatView = lazy(() => import('./ChatView.tsx'));
 
 interface TerminalViewProps {
   sessionName: string;
@@ -14,256 +21,168 @@ interface TerminalViewProps {
 
 type Tab = 'terminal' | 'files' | 'chat' | 'preview';
 
-interface TerminalRef {
-  sendInput: (data: string) => void;
-  paste: (text: string) => void;
-  focus: () => void;
-  copySelection: () => Promise<void>;
-  hasSelection: () => boolean;
-  enterSelectMode: () => void;
-  scrollUp: () => void;
-  scrollDown: () => void;
-}
-
-interface SessionMeta {
-  status?: 'working' | 'waiting' | 'finished' | 'idle';
-  task?: string;
-  cwd?: string;
-  preview_url?: string;
-  claude_session_id?: string;
-  updated_at?: number;
-}
-
-const STATUS_STYLES: Record<string, { color: string; label: string; pulse: boolean }> = {
-  working:  { color: '#f6ad55', label: 'working',  pulse: true  },
-  waiting:  { color: '#4fd1c5', label: 'waiting',  pulse: false },
-  finished: { color: '#68d391', label: 'finished', pulse: false },
-  idle:     { color: '#718096', label: 'idle',     pulse: false },
-};
-
 export default function TerminalView({ sessionName, context, onBack }: TerminalViewProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('terminal');
-  const [terminalRef, setTerminalRef] = useState<TerminalRef | null>(null);
+  const [selectedTab, setActiveTab] = useState<Tab>('terminal');
+  const [filesVisited, setFilesVisited] = useState(false);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const [meta, setMeta] = useState<SessionMeta>({});
-  const [inputVisible, setInputVisible] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmKill, setConfirmKill] = useState(false);
 
   // Poll session metadata every 2s while this view is open.
   useEffect(() => {
     let cancelled = false;
     const fetchMeta = async () => {
       try {
-        const metaUrl = `/api/sessions/${encodeURIComponent(sessionName)}/meta${context ? `?context=${encodeURIComponent(context)}` : ''}`;
+        const metaUrl = `${API}/api/sessions/${encodeURIComponent(sessionName)}/meta${context ? `?context=${encodeURIComponent(context)}` : ''}`;
         const res = await fetch(metaUrl);
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled) setMeta(data || {});
-      } catch {}
+      } catch { /* offline: keep the last known state */ }
     };
     fetchMeta();
     const id = setInterval(fetchMeta, 2000);
     return () => { cancelled = true; clearInterval(id); };
   }, [sessionName, context]);
 
-  // If the user was on the Preview tab and the preview URL disappears, fall back to Terminal.
   useEffect(() => {
-    if (activeTab === 'preview' && !meta.preview_url) setActiveTab('terminal');
-  }, [activeTab, meta.preview_url]);
+    document.title = `${sessionName} · Terminal`;
+    return () => { document.title = 'Terminal'; };
+  }, [sessionName]);
+
+  const selectTab = (tab: Tab) => {
+    if (tab === 'files') setFilesVisited(true);   // mounted on first visit, then kept
+    setActiveTab(tab);
+  };
 
   const handleConnectionChange = useCallback((conn: boolean, conning: boolean) => {
     setConnected(conn);
     setConnecting(conning);
   }, []);
 
-  const handleControlKey = (key: string) => {
-    if (terminalRef) {
-      terminalRef.sendInput(key);
-      terminalRef.focus();
+  const handleKill = async () => {
+    setConfirmKill(false);
+    setMenuOpen(false);
+    // Leave first: an attached terminal would reconnect and re-create the
+    // session the moment it disappears.
+    onBack();
+    try {
+      const qs = context ? `?context=${encodeURIComponent(context)}` : '';
+      const res = await fetch(`${API}/api/sessions/${encodeURIComponent(sessionName)}${qs}`, { method: 'DELETE' });
+      toast(res.ok ? `Killed ${sessionName}` : `Could not kill ${sessionName}`);
+    } catch {
+      toast(`Could not kill ${sessionName}`);
     }
   };
 
-  const handleCopy = async () => {
-    if (!terminalRef) return;
-    if (terminalRef.hasSelection()) {
-      await terminalRef.copySelection();
-    } else {
-      // Nothing selected — open the plain-text overlay for native selection
-      terminalRef.enterSelectMode();
-    }
-  };
-
-  const handlePaste = async () => {
-    if (!terminalRef) return;
-    const text = await readClipboardText();
-    if (text) {
-      terminalRef.paste(text);
-      terminalRef.focus();
-    } else {
-      // Clipboard API unavailable (http origin) or permission denied — open
-      // the text box so the user can paste natively and hit Send.
-      setInputVisible(true);
-      setTimeout(() => textareaRef.current?.focus(), 50);
-    }
-  };
-
-  const handleToggleInput = () => {
-    setInputVisible(prev => {
-      if (!prev) {
-        setTimeout(() => textareaRef.current?.focus(), 50);
-      }
-      return !prev;
-    });
-  };
-
-  const handleInputSubmit = () => {
-    if (terminalRef && inputText) {
-      terminalRef.sendInput(inputText);
-      setInputText('');
-      terminalRef.focus();
-    }
-  };
-
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleInputSubmit();
-    }
-  };
-
-  const status = meta.status && STATUS_STYLES[meta.status] ? STATUS_STYLES[meta.status] : null;
+  const status = statusOf(meta);
   const showPreview = Boolean(meta.preview_url);
+  // On the Preview tab when the preview URL disappears: fall back to Terminal.
+  const activeTab: Tab = selectedTab === 'preview' && !showPreview ? 'terminal' : selectedTab;
+
+  const tabs: SegmentedOption<Tab>[] = [
+    { value: 'terminal', title: 'Terminal', label: <><SquareTerminal size={17} /><span className="hidden sm:inline">Terminal</span></> },
+    { value: 'files', title: 'Files', label: <><Folder size={17} /><span className="hidden sm:inline">Files</span></> },
+    ...(showPreview ? [{ value: 'preview' as Tab, title: 'Preview', label: <><Globe size={17} /><span className="hidden sm:inline">Preview</span></> }] : []),
+  ];
+
+  // One status line: the connection when it needs attention, else the agent.
+  let dotClass = 'status-dot status-connected';
+  let dotTone: string | undefined;
+  let statusText = 'Connected';
+  let statusColor: string | undefined;
+  if (!connected) {
+    dotClass = `status-dot ${connecting ? 'status-connecting' : 'status-disconnected'}`;
+    statusText = connecting ? 'Connecting…' : 'Reconnecting…';
+  } else if (status) {
+    dotClass = `status-dot ${status === 'working' ? 'anim-breathe' : ''}`;
+    dotTone = STATUS[status].tone;
+    statusText = STATUS[status].label;
+    statusColor = status === 'idle' ? undefined : STATUS[status].tone;
+  }
 
   return (
-    <div className="h-dvh flex flex-col bg-[#1a1a2e]">
-      {/* Header with back button and tabs */}
-      <div className="flex items-center justify-between px-2 py-2 border-b border-[#2d2d4a] bg-[#252540] flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="p-2 text-slate-400 hover:text-white transition-colors"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+    <div className="screen anim-fade">
+      <div className="statusbar-pad on-bar" />
+      <header className="appbar appbar-collapsible">
+        <button onClick={onBack} className="icon-btn" aria-label="Back to sessions">
+          <ChevronLeft size={24} strokeWidth={2} />
         </button>
 
-        <div className="flex gap-1 bg-[#1a1a2e] rounded-lg p-1">
-          <button
-            onClick={() => setActiveTab('terminal')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'terminal'
-                ? 'bg-[#4fd1c5] text-[#1a1a2e]'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Terminal
-          </button>
-          <button
-            onClick={() => setActiveTab('files')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'files'
-                ? 'bg-[#4fd1c5] text-[#1a1a2e]'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Files
-          </button>
-          {showPreview && (
-            <button
-              onClick={() => setActiveTab('preview')}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === 'preview'
-                  ? 'bg-[#4fd1c5] text-[#1a1a2e]'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Preview
-            </button>
-          )}
-        </div>
-
-        <div className="flex flex-col items-end gap-0.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`status-dot ${connected ? 'status-connected' : connecting ? 'status-connecting' : 'status-disconnected'}`} />
-            <span className="text-xs text-slate-500 font-mono truncate max-w-[120px]">
-              {sessionName}
-            </span>
+        <div className="min-w-0 flex-1 pr-2">
+          <div className="font-mono text-[15px] font-semibold leading-5 truncate" title={sessionName}>{sessionName}</div>
+          <div className="flex items-center gap-1.5 text-[11.5px] leading-4 text-ink-2 min-w-0" title={meta.task ? `${statusText}: ${meta.task}` : statusText}>
+            <span className={dotClass} style={{ width: 7, height: 7, ...(dotTone ? { ['--tone' as string]: dotTone } : {}) }} />
+            <span className="truncate font-medium" style={statusColor ? { color: statusColor } : undefined}>{statusText}</span>
+            {context && <span className="truncate" style={{ color: contextTone(context) }}>· {context}</span>}
           </div>
-          {status && (
-            <div
-              className="flex items-center gap-1.5 text-[10px]"
-              title={meta.task ? `${status.label}: ${meta.task}` : status.label}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${status.pulse ? 'animate-pulse' : ''}`}
-                style={{ backgroundColor: status.color }}
-              />
-              <span
-                className="font-semibold uppercase tracking-wide"
-                style={{ color: status.color }}
-              >
-                {status.label}
-              </span>
-            </div>
-          )}
         </div>
-      </div>
 
-      {/* Control bar - only show on terminal tab */}
-      {activeTab === 'terminal' && (
-        <ControlBar
-          onKey={handleControlKey}
-          onCopy={handleCopy}
-          onPaste={handlePaste}
-          onToggleInput={handleToggleInput}
-          inputVisible={inputVisible}
-        />
-      )}
+        <Segmented<Tab> label="View" value={activeTab} onChange={selectTab} options={tabs} className="flex-shrink-0 [&_.seg-item]:!px-2.5 sm:[&_.seg-item]:!px-3" />
 
-      {/* Rich text input area */}
-      {activeTab === 'terminal' && inputVisible && (
-        <div className="flex items-stretch gap-2 px-2 py-2 bg-[#1e1e38] border-b border-[#2d2d4a] flex-shrink-0">
-          <textarea
-            ref={textareaRef}
-            value={inputText}
-            onChange={e => setInputText(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder="Type or dictate text..."
-            rows={2}
-            className="flex-1 bg-[#252540] text-white rounded-lg px-3 py-2 text-sm resize-none border border-[#3d3d5c] focus:border-[#4fd1c5] focus:outline-none placeholder-slate-500"
-          />
-          <button
-            onClick={handleInputSubmit}
-            disabled={!inputText}
-            className="px-4 bg-[#4fd1c5] text-[#1a1a2e] rounded-lg font-medium text-sm hover:bg-[#38b2ac] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Send
-          </button>
-        </div>
-      )}
+        <button className="icon-btn" onClick={() => setMenuOpen(true)} aria-label="Session menu and settings">
+          <Ellipsis size={21} />
+        </button>
+      </header>
 
-      {/* Main content */}
-      <div className="flex-1 min-h-0">
-        {activeTab === 'terminal' && (
-          <Terminal
+      {/* Main content. The terminal stays mounted (and attached) behind the
+          other tabs, so coming back to it is instant. */}
+      <div className="flex-1 min-h-0 relative">
+        <div className="absolute inset-0" hidden={activeTab !== 'terminal'}>
+          <TerminalPane
             sessionName={sessionName}
             context={context}
-            onReady={setTerminalRef}
             onConnectionChange={handleConnectionChange}
+            active={activeTab === 'terminal'}
           />
+        </div>
+        {filesVisited && (
+          <div className="absolute inset-0" hidden={activeTab !== 'files'}>
+            <FileBrowser sessionCwd={meta.cwd} context={context} />
+          </div>
         )}
-        {activeTab === 'files' && <FileBrowser sessionCwd={meta.cwd} context={context} />}
-        {activeTab === 'chat' && <ChatView sessionName={sessionName} />}
+        {activeTab === 'chat' && (
+          <div className="absolute inset-0">
+            <Suspense fallback={null}><ChatView sessionName={sessionName} /></Suspense>
+          </div>
+        )}
         {activeTab === 'preview' && meta.preview_url && (
           <iframe
             src={resolveFrameSrc(meta.preview_url)}
-            className="w-full h-full border-0 bg-white"
+            title={`Preview for ${sessionName}`}
+            className="absolute inset-0 w-full h-full border-0 bg-white"
             allow="fullscreen; clipboard-read; clipboard-write"
           />
         )}
       </div>
+
+      <SettingsSheet open={menuOpen} onClose={() => setMenuOpen(false)}>
+        <section className="mt-1">
+          <h3 className="eyebrow m-0 mb-1">This session</h3>
+          <div className="flex items-center gap-3 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-[15px] font-medium truncate">{sessionName}</div>
+              <div className="text-[13px] text-ink-2 mt-0.5 truncate">{meta.cwd || (context ? `Context: ${context}` : 'tmux session')}</div>
+            </div>
+            <button className="btn btn-sm btn-danger" onClick={() => setConfirmKill(true)}>
+              <Trash2 size={15} /> Kill
+            </button>
+          </div>
+        </section>
+      </SettingsSheet>
+
+      <ConfirmSheet
+        open={confirmKill}
+        title={`Kill ${sessionName}?`}
+        confirmLabel="Kill session"
+        danger
+        onCancel={() => setConfirmKill(false)}
+        onConfirm={handleKill}
+      >
+        This ends the tmux session and everything running inside it. It cannot be undone.
+      </ConfirmSheet>
     </div>
   );
 }

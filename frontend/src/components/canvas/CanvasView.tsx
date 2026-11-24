@@ -11,31 +11,19 @@ import Cursors from './Cursors';
 import CanvasSidebar from './CanvasSidebar';
 import VoiceBar from './VoiceBar';
 import HomeTabs from '../HomeTabs';
-import Terminal from '../Terminal';
-import ControlBar from '../ControlBar';
+import TerminalPane from '../TerminalPane';
 import { canvasSocket } from '../../lib/canvas/ws';
 import { canvasStore, useCanvasState } from '../../lib/canvas/store';
 import { VoiceAgent, type VoiceStatus } from '../../lib/voice/voiceAgent';
 import { sessionColor, STATUS_COLORS } from '../../lib/canvas/colors';
-import { readClipboardText } from '../../lib/clipboard';
 import type { RosterEntry, TileRect } from '../../lib/canvas/types';
+import { API } from '../../lib/base';
 
 interface ContextInfo { name: string; label: string; user: string | null }
 
 interface CanvasViewProps {
   onSelectSession: (name: string, context?: string) => void;
   onSwitchView: (view: 'list' | 'canvas') => void;
-}
-
-interface TerminalRef {
-  sendInput: (data: string) => void;
-  paste: (text: string) => void;
-  focus: () => void;
-  copySelection: () => Promise<void>;
-  hasSelection: () => boolean;
-  enterSelectMode: () => void;
-  scrollUp: () => void;
-  scrollDown: () => void;
 }
 
 // Standard tile: 768px content width. The server normalizes unattached
@@ -124,14 +112,11 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
   const focused = state.focusedKey
     ? state.sessions.find((s) => s.key === state.focusedKey) || null
     : null;
-  const [termRef, setTermRef] = useState<TerminalRef | null>(null);
-  const [inputVisible, setInputVisible] = useState(false);
-  const [inputText, setInputText] = useState('');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
 
   useEffect(() => {
     canvasSocket.start();
-    fetch('/api/contexts')
+    fetch(`${API}/api/contexts`)
       .then((r) => r.json())
       .then((d) => setContexts(d?.contexts || []))
       .catch(() => setContexts([]));
@@ -180,7 +165,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
       }
       for (const seg of segments) {
         try {
-          await fetch(`/api/sessions/${encodeURIComponent(session.name)}/keys`, {
+          await fetch(`${API}/api/sessions/${encodeURIComponent(session.name)}/keys`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ context: apiContext(session.context), ...seg }),
@@ -228,7 +213,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
 
   const createSession = useCallback(async (name: string, context?: string): Promise<string | null> => {
     try {
-      const res = await fetch('/api/sessions', {
+      const res = await fetch(`${API}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, ...(context ? { context } : {}) }),
@@ -404,14 +389,14 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
             const qs = new URLSearchParams();
             if (apiContext(s.context)) qs.set('context', s.context);
             if (lines) qs.set('lines', String(lines));
-            const res = await fetch(`/api/sessions/${encodeURIComponent(s.name)}/screen?${qs}`);
+            const res = await fetch(`${API}/api/sessions/${encodeURIComponent(s.name)}/screen?${qs}`);
             if (!res.ok) throw new Error('failed to read session');
             const j = await res.json();
             return { callsign: s.callsign, screen: j.text };
           }
           case 'type_text': {
             const s = resolve(args.session);
-            const res = await fetch(`/api/sessions/${encodeURIComponent(s.name)}/keys`, {
+            const res = await fetch(`${API}/api/sessions/${encodeURIComponent(s.name)}/keys`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -425,7 +410,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
           }
           case 'press_keys': {
             const s = resolve(args.session);
-            const res = await fetch(`/api/sessions/${encodeURIComponent(s.name)}/keys`, {
+            const res = await fetch(`${API}/api/sessions/${encodeURIComponent(s.name)}/keys`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ context: apiContext(s.context), keys: args.keys }),
@@ -452,7 +437,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
             }
             const s = resolve(args.session);
             const qs = apiContext(s.context) ? `?context=${encodeURIComponent(s.context)}` : '';
-            const res = await fetch(`/api/sessions/${encodeURIComponent(s.name)}${qs}`, { method: 'DELETE' });
+            const res = await fetch(`${API}/api/sessions/${encodeURIComponent(s.name)}${qs}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('failed to kill session');
             return { killed: s.callsign };
           }
@@ -599,8 +584,6 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
 
   const closeFocus = useCallback(() => {
     canvasStore.set({ focusedKey: null });
-    setTermRef(null);
-    setInputVisible(false);
   }, []);
 
   useEffect(() => {
@@ -611,13 +594,6 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
     return () => window.removeEventListener('keydown', onKey);
   }, [closeFocus]);
 
-  const handlePaste = async () => {
-    if (!termRef) return;
-    const text = await readClipboardText();
-    if (text) { termRef.paste(text); termRef.focus(); }
-    else { setInputVisible(true); setTimeout(() => textareaRef.current?.focus(), 50); }
-  };
-
   // --- Render -------------------------------------------------------------------------
 
   const theme = state.layout.theme || {};
@@ -627,7 +603,7 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
 
   return (
     <div
-      className={`canvas-root h-dvh relative overflow-hidden ${isDay ? 'canvas-day' : ''}`}
+      className={`canvas-root h-full relative overflow-hidden ${isDay ? 'canvas-day' : ''}`}
       style={theme.accent ? ({ '--cv-accent': theme.accent } as React.CSSProperties) : undefined}
       onPointerDownCapture={(e) => {
         if (!(e.target as Element).closest?.('.tile')) setSelectedTile(null);
@@ -823,55 +799,11 @@ export default function CanvasView({ onSelectSession, onSwitchView }: CanvasView
                 </svg>
               </button>
             </div>
-            <ControlBar
-              onKey={(k) => { termRef?.sendInput(k); termRef?.focus(); }}
-              onCopy={async () => {
-                if (!termRef) return;
-                if (termRef.hasSelection()) await termRef.copySelection();
-                else termRef.enterSelectMode();
-              }}
-              onPaste={handlePaste}
-              onToggleInput={() => {
-                setInputVisible((p) => {
-                  if (!p) setTimeout(() => textareaRef.current?.focus(), 50);
-                  return !p;
-                });
-              }}
-              inputVisible={inputVisible}
-            />
-            {inputVisible && (
-              <div className="flex items-stretch gap-2 px-2 py-2 flex-shrink-0 border-b" style={{ borderColor: 'var(--cv-edge)' }}>
-                <textarea
-                  ref={textareaRef}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if (termRef && inputText) { termRef.sendInput(inputText); setInputText(''); termRef.focus(); }
-                    }
-                  }}
-                  placeholder="Type or dictate text..."
-                  rows={2}
-                  className="flex-1 rounded-lg px-3 py-2 text-sm resize-none outline-none"
-                  style={{ background: 'color-mix(in srgb, var(--cv-bg) 65%, transparent)', border: '1px solid var(--cv-edge)', color: 'var(--cv-ink)' }}
-                />
-                <button
-                  onClick={() => { if (termRef && inputText) { termRef.sendInput(inputText); setInputText(''); termRef.focus(); } }}
-                  disabled={!inputText}
-                  className="px-4 rounded-lg font-medium text-sm disabled:opacity-40"
-                  style={{ background: 'var(--cv-accent)', color: 'var(--cv-bg)' }}
-                >
-                  Send
-                </button>
-              </div>
-            )}
             <div className="flex-1 min-h-0">
-              <Terminal
+              <TerminalPane
+                key={focused.key}
                 sessionName={focused.name}
                 context={apiContext(focused.context)}
-                onReady={setTermRef}
-                onConnectionChange={() => {}}
               />
             </div>
           </div>

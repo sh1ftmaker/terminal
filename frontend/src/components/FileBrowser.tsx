@@ -1,5 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import FileViewer from './FileViewer';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import {
+  ArrowUpRight, ChevronRight, CornerLeftUp, Download, File, FileCode2, FileImage, FilePlus2, FileText, Film,
+  Folder, FolderPlus, House, LoaderCircle, Upload, X,
+} from 'lucide-react';
+import { shortAgo } from '../lib/sessions';
+
+// The viewer pulls in the syntax highlighter; load it when a file is opened.
+const FileViewer = lazy(() => import('./FileViewer'));
+import { API } from '../lib/base';
 
 interface FileEntry {
   name: string;
@@ -33,6 +41,36 @@ function formatSize(bytes: number): string {
 }
 
 type CreateMode = null | 'file' | 'folder';
+
+const CODE_EXTS = new Set(['js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'php', 'swift', 'kt', 'sh', 'bash', 'zsh', 'html', 'css', 'scss', 'json', 'yaml', 'yml', 'toml', 'xml', 'sql', 'lua', 'vue', 'svelte']);
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'avif', 'bmp']);
+const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'mkv', 'avi']);
+const TEXT_EXTS = new Set(['md', 'txt', 'log', 'rst', 'csv', 'env', 'ini', 'conf']);
+
+function FileIcon({ name }: { name: string }) {
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+  const props = { size: 20, strokeWidth: 1.75 } as const;
+  if (IMAGE_EXTS.has(ext)) return <FileImage {...props} />;
+  if (VIDEO_EXTS.has(ext)) return <Film {...props} />;
+  if (CODE_EXTS.has(ext)) return <FileCode2 {...props} />;
+  if (TEXT_EXTS.has(ext)) return <FileText {...props} />;
+  return <File {...props} />;
+}
+
+// "/home/me/Work/app" → [~, Work, app], each with the path it navigates to.
+function breadcrumbs(path: string): Array<{ label: string; path: string; home?: boolean }> {
+  const home = path.match(/^\/(?:home|Users)\/[^/]+/)?.[0];
+  const rest = (home ? path.slice(home.length) : path).split('/').filter(Boolean);
+  const out: Array<{ label: string; path: string; home?: boolean }> = home
+    ? [{ label: '~', path: home, home: true }]
+    : [{ label: '/', path: '/' }];
+  let acc = home ?? '';
+  for (const part of rest) {
+    acc = `${acc}/${part}`;
+    out.push({ label: part, path: acc });
+  }
+  return out;
+}
 
 export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = {}) {
   const STORAGE_KEY = `fileBrowser_lastDir_${context || 'admin'}`;
@@ -78,7 +116,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
 
     let cancelled = false;
     setDirSizes({});
-    fetch(withCtx(`/api/files/dir-sizes?path=${encodeURIComponent(currentPath)}`))
+    fetch(withCtx(`${API}/api/files/dir-sizes?path=${encodeURIComponent(currentPath)}`))
       .then(r => r.json())
       .then(data => { if (!cancelled) setDirSizes(data.sizes || {}); })
       .catch(() => {});
@@ -89,7 +127,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(withCtx(`/api/files?path=${encodeURIComponent(path)}`));
+      const res = await fetch(withCtx(`${API}/api/files?path=${encodeURIComponent(path)}`));
       if (res.ok) {
         const data = await res.json();
         setListing(data);
@@ -117,7 +155,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     if (saved) {
       fetchDirectory(saved).then(() => {});
     } else {
-      fetch(withCtx('/api/config'))
+      fetch(withCtx(`${API}/api/config`))
         .then(r => r.json())
         .then(cfg => fetchDirectory(cfg.rootPath || '/'))
         .catch(() => fetchDirectory('/'));
@@ -137,7 +175,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
   // If the saved path fails, fall back to root
   useEffect(() => {
     if (error && currentPath === '' && listing === null) {
-      fetch(withCtx('/api/config'))
+      fetch(withCtx(`${API}/api/config`))
         .then(r => r.json())
         .then(cfg => fetchDirectory(cfg.rootPath || '/'))
         .catch(() => fetchDirectory('/'));
@@ -214,7 +252,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
       fd.append('path', targetPath);
       fd.append('files', file);
 
-      xhr.open('POST', withCtx('/api/files/upload'));
+      xhr.open('POST', withCtx(`${API}/api/files/upload`));
       xhr.send(fd);
     });
   }, [withCtx]);
@@ -268,7 +306,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
   const handleDownloadZip = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(withCtx(`/api/files/download-zip?path=${encodeURIComponent(currentPath)}`));
+      const res = await fetch(withCtx(`${API}/api/files/download-zip?path=${encodeURIComponent(currentPath)}`));
       if (!res.ok) throw new Error();
       const blob = await res.blob();
       const dirName = currentPath.split('/').pop() || 'download';
@@ -290,7 +328,6 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     setCreateMode(mode);
     setCreateName('');
     setError('');
-    setTimeout(() => createInputRef.current?.focus(), 50);
   }, []);
 
   const cancelCreate = useCallback(() => {
@@ -306,7 +343,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     setError('');
     try {
       const fullPath = `${currentPath}/${name}`;
-      const endpoint = createMode === 'folder' ? '/api/files/mkdir' : '/api/files/create';
+      const endpoint = createMode === 'folder' ? `${API}/api/files/mkdir` : `${API}/api/files/create`;
       const res = await fetch(withCtx(endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -368,7 +405,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
 
     setError('');
     try {
-      const res = await fetch(withCtx('/api/files/move'), {
+      const res = await fetch(withCtx(`${API}/api/files/move`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctxBody({ src, dest })),
@@ -404,7 +441,7 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     if (src === dest) return;
 
     try {
-      const res = await fetch(withCtx('/api/files/move'), {
+      const res = await fetch(withCtx(`${API}/api/files/move`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctxBody({ src, dest })),
@@ -422,211 +459,157 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
     }
   }, [currentPath, listing]);
 
+  // Keep the end of the breadcrumb (where you are) in view.
+  const crumbsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = crumbsRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [currentPath]);
+
   if (viewingFile) {
     return (
-      <FileViewer
-        filePath={viewingFile.path}
-        fileSize={viewingFile.size}
-        context={context}
-        onBack={() => setViewingFile(null)}
-      />
+      <Suspense fallback={<div className="h-full bg-bg" />}>
+        <FileViewer
+          filePath={viewingFile.path}
+          fileSize={viewingFile.size}
+          context={context}
+          onBack={() => setViewingFile(null)}
+        />
+      </Suspense>
     );
   }
 
+  const crumbs = currentPath ? breadcrumbs(currentPath) : [];
+  const doneUploads = uploads.filter((u) => u.status === 'done').length;
+  const failedUploads = uploads.filter((u) => u.status === 'error').length;
+  const canceledUploads = uploads.filter((u) => u.status === 'canceled').length;
+  const activeUploads = uploads.length - doneUploads - failedUploads - canceledUploads;
+
   return (
-    <div className="h-full flex flex-col bg-[#1a1a2e]">
-      {/* Path header */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-[#252540] border-b border-[#2d2d4a]">
-        {listing?.parent && (
-          <button
-            onClick={handleNavigateUp}
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTarget('..'); }}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDropOnParent}
-            className={`p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a] ${
-              dropTarget === '..' ? 'ring-2 ring-[#4fd1c5] bg-[#2d2d4a]' : ''
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-          </button>
-        )}
-        <span className="text-sm text-slate-300 font-mono truncate flex-1 min-w-0">
-          {currentPath}
-        </span>
-        {/* New folder */}
+    <div className="h-full flex flex-col bg-bg">
+      {/* Location: up + breadcrumb */}
+      <div className="flex items-center gap-1 flex-shrink-0 bg-surface border-b border-line" style={{ paddingLeft: 'calc(4px + var(--safe-l))', paddingRight: 'calc(8px + var(--safe-r))' }}>
         <button
-          onClick={() => openCreate('folder')}
-          className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a]"
-          title="New folder"
+          onClick={handleNavigateUp}
+          disabled={!listing?.parent}
+          onDragOver={(e) => { if (!listing?.parent) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTarget('..'); }}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDropOnParent}
+          className={`icon-btn ${dropTarget === '..' ? 'is-on' : ''}`}
+          aria-label="Up one folder"
+          title="Up one folder"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-          </svg>
+          <CornerLeftUp size={19} />
         </button>
-        {/* New file */}
-        <button
-          onClick={() => openCreate('file')}
-          className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a]"
-          title="New file"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </button>
-        {/* Download folder as zip */}
-        <button
-          onClick={handleDownloadZip}
-          disabled={downloading}
-          className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a] disabled:opacity-40"
-          title="Download folder as zip"
-        >
-          {downloading ? (
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-          )}
-        </button>
-        {/* Upload button */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          onChange={handleUpload}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a] disabled:opacity-40"
-          title="Upload files to current directory"
-        >
-          {uploading ? (
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-          )}
-        </button>
+        <div ref={crumbsRef} className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto no-scrollbar py-1.5" aria-label="Current folder">
+          {crumbs.map((c, i) => {
+            const last = i === crumbs.length - 1;
+            return (
+              <span key={c.path} className="flex items-center gap-0.5 flex-shrink-0">
+                {i > 0 && <ChevronRight size={13} className="text-ink-3" />}
+                <button
+                  onClick={() => { if (!last) fetchDirectory(c.path); }}
+                  aria-current={last ? 'location' : undefined}
+                  className={`h-8 px-1.5 rounded-md font-mono text-[13px] inline-flex items-center ${last ? 'text-ink font-semibold' : 'text-ink-2 active:bg-press'}`}
+                >
+                  {c.home ? <House size={15} aria-label="Home" /> : c.label}
+                </button>
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       {/* Create inline input */}
       {createMode && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-[#1e1e38] border-b border-[#2d2d4a]">
-          {createMode === 'folder' ? (
-            <svg className="w-5 h-5 text-[#4fd1c5] flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-            </svg>
-          )}
+        <div className="flex items-center gap-2 px-3 py-2 bg-surface border-b border-line flex-shrink-0 anim-fade">
+          <span className={createMode === 'folder' ? 'text-accent' : 'text-ink-2'}>
+            {createMode === 'folder' ? <Folder size={20} /> : <File size={20} />}
+          </span>
           <input
             ref={createInputRef}
+            // Mounted by the tap that opened it, so the keyboard comes up too.
+            autoFocus
             value={createName}
             onChange={e => setCreateName(e.target.value)}
             onKeyDown={handleCreateKeyDown}
             placeholder={createMode === 'folder' ? 'Folder name' : 'filename.ext'}
-            className="flex-1 bg-[#252540] text-white rounded-lg px-3 py-2 text-sm border border-[#3d3d5c] focus:border-[#4fd1c5] focus:outline-none placeholder-slate-500 min-w-0"
+            className="field flex-1 min-w-0 !min-h-[40px] !py-2 font-mono"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="done"
           />
-          <button
-            onClick={submitCreate}
-            disabled={creating || !createName.trim()}
-            className="px-3 py-2 bg-[#4fd1c5] text-[#1a1a2e] rounded-lg text-sm font-medium hover:bg-[#38b2ac] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-          >
-            {creating ? '...' : 'Create'}
+          <button onClick={submitCreate} disabled={creating || !createName.trim()} className="btn btn-sm btn-primary !min-h-[40px]">
+            {creating ? '…' : 'Create'}
           </button>
-          <button
-            onClick={cancelCreate}
-            className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-[#2d2d4a] flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button onClick={cancelCreate} className="icon-btn icon-btn-sm" aria-label="Cancel">
+            <X size={18} />
           </button>
         </div>
       )}
 
       {/* File list */}
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div className="text-slate-400 text-center py-8">Loading...</div>
+      <div className="flex-1 scroll-y min-h-0">
+        {loading && !listing ? (
+          <div className="px-4 py-3 flex flex-col gap-4">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-3"><div className="skeleton w-5 h-5" /><div className="skeleton h-3.5 flex-1 max-w-48" /></div>)}
+          </div>
         ) : error ? (
-          <div className="text-red-400 text-center py-8">{error}</div>
+          <div className="text-danger text-center text-[14px] py-10 px-6">{error}</div>
         ) : listing?.files.length === 0 ? (
-          <div className="text-slate-400 text-center py-8">Empty directory</div>
+          <div className="text-ink-3 text-center text-[14px] py-12">This folder is empty</div>
         ) : (
-          <ul className="divide-y divide-[#2d2d4a]">
+          <ul className={`m-0 p-0 list-none divide-y divide-line transition-opacity ${loading ? 'opacity-60' : ''}`} style={{ paddingLeft: 'var(--safe-l)', paddingRight: 'var(--safe-r)' }}>
             {listing?.files.map((entry) => {
-              const isDropping = dropTarget === entry.name && entry.type === 'directory';
+              const isDir = entry.type === 'directory';
+              const isDropping = dropTarget === entry.name && isDir;
               const isDragging = dragSource === `${currentPath}/${entry.name}`;
+              const size = entry.type === 'file' && entry.size !== null
+                ? formatSize(entry.size)
+                : isDir && dirSizes[entry.name] !== undefined ? formatSize(dirSizes[entry.name]) : '';
               return (
                 <li key={entry.name}>
                   <div
-                    className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-[#252540] transition-colors text-left ${
-                      isDropping ? 'bg-[#2d2d4a] ring-1 ring-inset ring-[#4fd1c5]' : ''
+                    className={`row-press w-full pl-4 pr-3 min-h-[52px] flex items-center gap-3 text-left ${
+                      isDropping ? 'bg-accent-soft shadow-[inset_0_0_0_1.5px_var(--accent-line)]' : ''
                     } ${isDragging ? 'opacity-40' : ''}`}
                     onDragOver={(e) => handleDragOver(e, entry)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, entry)}
                   >
-                    {/* Draggable icon */}
+                    {/* Draggable icon (drag onto a folder to move) */}
                     <div
                       draggable
                       onDragStart={(e) => handleDragStart(e, entry)}
                       onDragEnd={handleDragEnd}
-                      className="relative cursor-grab active:cursor-grabbing touch-none flex-shrink-0"
+                      className={`relative cursor-grab active:cursor-grabbing flex-shrink-0 ${isDir ? 'text-accent' : 'text-ink-3'}`}
                       title={entry.symlink ? `→ ${entry.target ?? '?'}${entry.broken ? ' (broken)' : ''}` : undefined}
                     >
-                      {entry.type === 'directory' ? (
-                        <svg className="w-5 h-5 text-[#4fd1c5]" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 text-slate-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path
-                            fillRule="evenodd"
-                            d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      )}
+                      {isDir ? <Folder size={20} strokeWidth={1.75} fill="currentColor" fillOpacity={0.18} /> : <FileIcon name={entry.name} />}
                       {entry.symlink && (
-                        <svg className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-sm bg-[#1a1a2e] ${entry.broken ? 'text-red-400' : 'text-amber-300'}`} fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7M9 7h8v8" />
-                        </svg>
+                        <ArrowUpRight
+                          size={12}
+                          strokeWidth={3}
+                          className={`absolute -bottom-1 -right-1.5 rounded-sm bg-bg ${entry.broken ? 'text-danger' : 'text-warn'}`}
+                        />
                       )}
                     </div>
-                    {/* Clickable name + size */}
-                    <button
-                      onClick={() => handleNavigate(entry)}
-                      className="flex-1 flex items-center gap-3 min-w-0 text-left"
-                    >
-                      <span className={`flex-1 truncate ${entry.broken ? 'text-slate-500 line-through' : 'text-white'}`}>
-                        {entry.name}
-                        {entry.type === 'directory' && '/'}
+                    {/* Clickable name + details */}
+                    <button onClick={() => handleNavigate(entry)} className="flex-1 flex items-center gap-3 min-w-0 text-left self-stretch py-2">
+                      <span className="flex-1 min-w-0">
+                        <span className={`block truncate text-[15px] ${entry.broken ? 'text-ink-3 line-through' : 'text-ink'}`}>
+                          {entry.name}
+                        </span>
                         {entry.symlink && (
-                          <span className="ml-2 text-xs text-slate-500 no-underline">→ {entry.target}</span>
+                          <span className="block truncate font-mono text-[11.5px] text-ink-3">→ {entry.target}</span>
                         )}
                       </span>
-                      <span className="text-slate-500 text-sm whitespace-nowrap">
-                        {entry.type === 'file' && entry.size !== null
-                          ? formatSize(entry.size)
-                          : entry.type === 'directory' && dirSizes[entry.name] !== undefined
-                            ? formatSize(dirSizes[entry.name])
-                            : entry.type === 'directory' && !entry.symlink ? '\u00B7\u00B7\u00B7' : ''}
+                      <span className="text-right flex-shrink-0 text-[12px] text-ink-3 tabular leading-tight">
+                        <span className="block">{size || (isDir && !entry.symlink ? '···' : '')}</span>
+                        <span className="block">{shortAgo(entry.modified)}</span>
                       </span>
+                      {isDir && <ChevronRight size={16} className="text-ink-3 flex-shrink-0 -ml-1" />}
                     </button>
                   </div>
                 </li>
@@ -636,69 +619,79 @@ export default function FileBrowser({ sessionCwd, context }: FileBrowserProps = 
         )}
       </div>
 
-      {/* Upload progress panel — fixed overlay shown while uploads are in
-          flight or until dismissed after completion */}
+      {/* Actions, in thumb reach */}
+      <input ref={fileInputRef} type="file" multiple onChange={handleUpload} className="hidden" />
+      <div
+        className="flex-shrink-0 grid grid-cols-4 gap-1 bg-surface border-t border-line px-1.5 pt-1"
+        style={{ paddingBottom: 'calc(4px + var(--safe-b))' }}
+      >
+        {([
+          { label: 'New folder', icon: <FolderPlus size={19} />, onClick: () => openCreate('folder'), busy: false },
+          { label: 'New file', icon: <FilePlus2 size={19} />, onClick: () => openCreate('file'), busy: false },
+          { label: 'Upload', icon: <Upload size={19} />, onClick: () => fileInputRef.current?.click(), busy: uploading },
+          { label: 'Zip', icon: <Download size={19} />, onClick: handleDownloadZip, busy: downloading },
+        ]).map((a) => (
+          <button
+            key={a.label}
+            onClick={a.onClick}
+            disabled={a.busy}
+            title={a.label === 'Zip' ? 'Download this folder as a zip' : a.label}
+            className="flex flex-col items-center justify-center gap-0.5 min-h-[46px] rounded-lg text-ink-2 active:bg-press disabled:opacity-50"
+          >
+            {a.busy ? <LoaderCircle size={19} className="anim-spin" /> : a.icon}
+            <span className="text-[10.5px] font-medium leading-none">{a.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Upload progress — shown while uploads are in flight or until
+          dismissed after completion */}
       {uploads.length > 0 && (
-        <div className="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-96 bg-[#252540] border border-[#2d2d4a] rounded-lg shadow-xl z-50 flex flex-col max-h-[60vh]">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#2d2d4a]">
-            <div className="text-sm text-white font-medium">
-              {(() => {
-                const done = uploads.filter(u => u.status === 'done').length;
-                const failed = uploads.filter(u => u.status === 'error').length;
-                const canceled = uploads.filter(u => u.status === 'canceled').length;
-                const active = uploads.length - done - failed - canceled;
-                if (active > 0) return `Uploading ${done + 1}/${uploads.length}`;
-                if (failed > 0 || canceled > 0) return `Done — ${done} ok, ${failed} failed${canceled ? `, ${canceled} canceled` : ''}`;
-                return `Uploaded ${done} file${done === 1 ? '' : 's'}`;
-              })()}
+        <div
+          className="absolute left-3 right-3 sm:left-auto sm:w-96 z-40 bg-surface border border-line-strong rounded-2xl flex flex-col max-h-[60%] anim-rise"
+          style={{ bottom: 'calc(64px + var(--safe-b))', boxShadow: 'var(--shadow-pop)' }}
+        >
+          <div className="flex items-center justify-between pl-4 pr-2 py-1.5 border-b border-line">
+            <div className="text-[14px] font-semibold">
+              {activeUploads > 0
+                ? `Uploading ${doneUploads + 1} of ${uploads.length}`
+                : failedUploads > 0 || canceledUploads > 0
+                  ? `Done: ${doneUploads} ok, ${failedUploads} failed${canceledUploads ? `, ${canceledUploads} canceled` : ''}`
+                  : `Uploaded ${doneUploads} file${doneUploads === 1 ? '' : 's'}`}
             </div>
             {uploading ? (
-              <button
-                onClick={handleCancelUploads}
-                className="text-xs text-red-300 hover:text-red-200 font-medium px-2 py-1 rounded hover:bg-[#2d2d4a]"
-              >
-                Cancel
-              </button>
+              <button onClick={handleCancelUploads} className="btn btn-sm btn-ghost !text-danger">Cancel</button>
             ) : (
-              <button
-                onClick={handleDismissUploadPanel}
-                className="text-slate-400 hover:text-white text-xs"
-                title="Dismiss"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <button onClick={handleDismissUploadPanel} className="icon-btn icon-btn-sm" aria-label="Dismiss">
+                <X size={17} />
               </button>
             )}
           </div>
-          <div className="overflow-y-auto px-4 py-3 space-y-3">
+          <div className="scroll-y px-4 py-3 space-y-3">
             {uploads.map((u, i) => {
               const pct = u.total > 0 ? Math.min(100, Math.round((u.loaded / u.total) * 100)) : 0;
               const barColor =
-                u.status === 'error'    ? '#fc8181' :
-                u.status === 'canceled' ? '#a0aec0' :
-                u.status === 'done'     ? '#68d391' :
-                u.status === 'uploading'? '#4fd1c5' :
-                                          '#3d3d5c';
+                u.status === 'error'    ? 'var(--danger)' :
+                u.status === 'canceled' ? 'var(--ink-3)' :
+                u.status === 'done'     ? 'var(--ok)' :
+                u.status === 'uploading'? 'var(--accent)' :
+                                          'var(--line-strong)';
               const rightText =
                 u.status === 'error'    ? (u.error || 'Failed') :
                 u.status === 'canceled' ? 'Canceled' :
                 u.status === 'done'     ? formatSize(u.total) :
                                           `${formatSize(u.loaded)} / ${formatSize(u.total)}  ·  ${pct}%`;
               return (
-                <div key={`${u.name}-${i}`} className="text-xs">
-                  <div className="flex justify-between gap-3 mb-1">
-                    <span className="text-slate-200 truncate flex-1 min-w-0" title={u.name}>{u.name}</span>
-                    <span
-                      className="flex-shrink-0 font-mono"
-                      style={{ color: u.status === 'error' ? '#fc8181' : '#94a3b8' }}
-                    >
+                <div key={`${u.name}-${i}`} className="text-[12.5px]">
+                  <div className="flex justify-between gap-3 mb-1.5">
+                    <span className="truncate flex-1 min-w-0" title={u.name}>{u.name}</span>
+                    <span className={`flex-shrink-0 font-mono tabular ${u.status === 'error' ? 'text-danger' : 'text-ink-2'}`}>
                       {rightText}
                     </span>
                   </div>
-                  <div className="h-1.5 bg-[#1a1a2e] rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-surface-3 rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-150 ${u.status === 'uploading' ? '' : ''}`}
+                      className="h-full rounded-full transition-all duration-150"
                       style={{ width: `${u.status === 'done' ? 100 : pct}%`, backgroundColor: barColor }}
                     />
                   </div>

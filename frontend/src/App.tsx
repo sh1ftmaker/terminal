@@ -1,7 +1,12 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import SessionList from './components/SessionList';
 import TerminalView from './components/TerminalView';
-import CanvasView from './components/canvas/CanvasView';
+import ToastHost from './components/ui/ToastHost';
+import { appPath, currentRoute } from './lib/base';
+
+// The canvas (and its voice agent) is a different, desktop-leaning home: keep
+// it out of the bundle a phone downloads to reach its sessions.
+const CanvasView = lazy(() => import('./components/canvas/CanvasView'));
 
 interface Selection {
   session: string;
@@ -35,13 +40,13 @@ function readUrl(): Route {
     };
   }
   // /canvas is an explicit deep link; plain / uses the per-device preference.
-  const home = window.location.pathname === '/canvas' ? 'canvas' : savedHomeView();
+  const home = currentRoute() === 'canvas' ? 'canvas' : savedHomeView();
   return { selection: null, home };
 }
 
 function writeUrl(sel: Selection | null, home: HomeView) {
   if (!sel) {
-    window.history.pushState({}, '', home === 'canvas' ? '/canvas' : '/');
+    window.history.pushState({}, '', appPath(home === 'canvas' ? 'canvas' : ''));
     return;
   }
   const qs = new URLSearchParams();
@@ -76,19 +81,28 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  let view;
   if (route.selection) {
-    return (
+    view = (
       <TerminalView
+        key={`${route.selection.context ?? ''}:${route.selection.session}`}
         sessionName={route.selection.session}
         context={route.selection.context}
         onBack={handleBack}
       />
     );
-  }
-
-  if (route.home === 'canvas') {
-    return (
-      <CanvasView
+  } else if (route.home === 'canvas') {
+    view = (
+      <Suspense fallback={<div className="screen" />}>
+        <CanvasView
+          onSelectSession={handleSelectSession}
+          onSwitchView={handleSwitchView}
+        />
+      </Suspense>
+    );
+  } else {
+    view = (
+      <SessionList
         onSelectSession={handleSelectSession}
         onSwitchView={handleSwitchView}
       />
@@ -96,10 +110,10 @@ function App() {
   }
 
   return (
-    <SessionList
-      onSelectSession={handleSelectSession}
-      onSwitchView={handleSwitchView}
-    />
+    <>
+      {view}
+      <ToastHost />
+    </>
   );
 }
 

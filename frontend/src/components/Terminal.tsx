@@ -1,35 +1,81 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import { WebglAddon } from '@xterm/addon-webgl';
+import { ArrowDown, ArrowUp, LoaderCircle, RotateCw } from 'lucide-react';
 import { copyText } from '../lib/clipboard';
 import { MultilineUrlProvider } from '../lib/multilineLinks';
 import { unwrapSelection, sourceLinesFromText, type SourceLine } from '../lib/unwrap';
 import { openExternal } from '../lib/openExternal';
+import { API, wsUrl } from '../lib/base';
+import { getSettings, useSettings } from '../lib/settings';
+import { terminalMinContrast, terminalTheme, useThemeKey } from '../lib/theme';
+
+export interface TerminalHandle {
+  /** Send raw bytes to the pty. */
+  sendInput: (data: string) => void;
+  /** Paste text, honouring bracketed-paste mode. */
+  paste: (text: string) => void;
+  focus: () => void;
+  blur: () => void;
+  copySelection: () => Promise<boolean>;
+  hasSelection: () => boolean;
+  enterSelectMode: () => void;
+  scrollToCursor: () => void;
+  reconnect: () => void;
+}
 
 interface TerminalProps {
   sessionName: string;
   context?: string;
-  onReady: (ref: {
-    sendInput: (data: string) => void;
-    paste: (text: string) => void;
-    focus: () => void;
-    copySelection: () => Promise<void>;
-    hasSelection: () => boolean;
-    enterSelectMode: () => void;
-    scrollUp: () => void;
-    scrollDown: () => void;
-  }) => void;
+  onReady: (handle: TerminalHandle) => void;
   onConnectionChange?: (connected: boolean, connecting: boolean) => void;
+  /** Rewrites text typed on the keyboard before it is sent (sticky modifiers). */
+  transformInput?: (data: string) => string;
+  /** False while the terminal is mounted but not on screen (another tab). */
+  active?: boolean;
 }
 
 const TERMINAL_ROWS = 200; // Tall terminal for scrollback history
+const MIN_COLS = 20;
+const FONT_FAMILY = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
+// Must match the .xterm padding in index.css.
+const PAD_X = 16;
+const PAD_TOP = 6;
+// Rows kept visible below the cursor when following it: TUIs (Claude Code)
+// draw their hints and status lines underneath the input.
+const FOLLOW_MARGIN_ROWS = 4;
+// A backgrounded tab's socket can die without a close event (iOS suspends
+// them). After this long hidden, reattach instead of trusting it.
+const STALE_AFTER_MS = 30_000;
+
+// xterm answers the app's queries (focus in/out, device attributes, cursor
+// position) through the same channel as keystrokes. Those are not the user
+// typing, so they must not pull the view back to the prompt.
+// eslint-disable-next-line no-control-regex
+const TERMINAL_REPORT = /^\x1b(?:\[[?>]?[\d;]*\$?[IOcRnty]$|\]|P)/;
 
 // Copies re-join lines the TUI wrapped to the pane width (long URLs/commands
-// come out as one line). Persisted; toggled from the select overlay's bar.
+// come out as one line). Persisted; toggled from the select overlay's bar
+// and from Settings.
 const UNWRAP_COPY_KEY = 'terminal.unwrapCopy';
+const UNWRAP_COPY_EVENT = 'terminal:unwrap-copy';
 function loadUnwrapCopy(): boolean {
   try { return localStorage.getItem(UNWRAP_COPY_KEY) !== '0'; } catch { return true; }
+}
+
+// xterm's measured cell box. There is no public accessor; the fallbacks
+// below cover an xterm upgrade moving it.
+function cellSize(terminal: XTerm): { w: number; h: number } | null {
+  type Core = { _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } } };
+  const cell = (terminal as unknown as { _core?: Core })._core?._renderService?.dimensions?.css?.cell;
+  return cell && cell.width > 0 && cell.height > 0 ? { w: cell.width, h: cell.height } : null;
+}
+
+function rowHeightOf(container: HTMLElement, terminal: XTerm): number {
+  const cell = cellSize(terminal);
+  if (cell) return cell.h;
+  const screen = container.querySelector<HTMLElement>('.xterm-screen');
+  const measured = screen && terminal.rows > 0 ? screen.offsetHeight / terminal.rows : 0;
+  return measured > 0 ? measured : (terminal.options.fontSize ?? 14) * 1.3;
 }
 
 // Right-edge column of a buffer row: index just past the last non-blank cell.
@@ -74,47 +120,58 @@ function getSelectionUnwrapped(terminal: XTerm): string {
   return unwrapSelection(pieces, lines, terminal.cols);
 }
 
-// Reveal the cursor by scrolling the outer container. Scroll overrides are only
-// ever applied downward: if the cursor is already visible, or revealing it would
-// mean scrolling up, the user's position is left alone (a viewport refresh /
-// keyboard toggle used to yank the view upward mid-typing because of a rough
-// 17px row estimate that drifted from xterm's real cell height).
-function scrollDownToCursor(container: HTMLElement, terminal: XTerm, onlyIfHidden: boolean) {
-  const screen = container.querySelector<HTMLElement>('.xterm-screen');
-  const measured = screen && terminal.rows > 0 ? screen.offsetHeight / terminal.rows : 0;
-  const rowHeight = measured > 0 ? measured : 17;
+type CursorPlace = 'visible' | 'above' | 'below';
 
-  const cursorRow = terminal.buffer.active.baseY + terminal.buffer.active.cursorY;
-  const cursorPixelPosition = cursorRow * rowHeight;
-  const scrollTop = container.scrollTop;
-  const containerHeight = container.clientHeight;
+// Where the cursor row sits relative to the scroller's visible window.
+function cursorPlace(container: HTMLElement, terminal: XTerm): CursorPlace {
+  const rowH = rowHeightOf(container, terminal);
+  const top = PAD_TOP + (terminal.buffer.active.baseY + terminal.buffer.active.cursorY) * rowH;
+  if (top < container.scrollTop) return 'above';
+  if (top + rowH > container.scrollTop + container.clientHeight) return 'below';
+  return 'visible';
+}
 
-  if (onlyIfHidden) {
-    const cursorVisible = cursorPixelPosition >= scrollTop &&
-                          cursorPixelPosition + rowHeight <= scrollTop + containerHeight;
-    if (cursorVisible) return;
+// Scroll the outer container so the cursor row is on screen, with a few rows
+// of room underneath. With `force` it always re-centres on that position;
+// otherwise it only moves when the cursor is hidden or under the margin.
+function revealCursor(container: HTMLElement, terminal: XTerm, force: boolean) {
+  const rowH = rowHeightOf(container, terminal);
+  const top = PAD_TOP + (terminal.buffer.active.baseY + terminal.buffer.active.cursorY) * rowH;
+  const height = container.clientHeight;
+  const max = Math.max(0, container.scrollHeight - height);
+  const margin = Math.min(FOLLOW_MARGIN_ROWS * rowH, Math.max(0, height - rowH * 2));
+  const anchored = Math.min(max, Math.max(0, top + rowH + margin - height));
+
+  if (force) {
+    container.scrollTop = anchored;
+    return;
   }
-
-  // Show cursor well above the bottom of the visible area (extra 200px for keyboard)
-  const targetScroll = Math.max(0, cursorPixelPosition - containerHeight + rowHeight * 3 + 200);
-  if (targetScroll > scrollTop) {
-    container.scrollTop = targetScroll;
+  if (top < container.scrollTop) {
+    // Cursor went above the window (clear, redraw): show it near the top.
+    container.scrollTop = Math.max(0, top - rowH);
+  } else if (top + rowH + margin > container.scrollTop + height && anchored > container.scrollTop) {
+    container.scrollTop = anchored;
   }
 }
 
-export default function Terminal({ sessionName, context, onReady, onConnectionChange }: TerminalProps) {
+export default function Terminal({ sessionName, context, onReady, onConnectionChange, transformInput, active = true }: TerminalProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const webglAddonRef = useRef<WebglAddon | null>(null);
-  const manualScrollRef = useRef(false); // Track if user manually scrolled via buttons
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const isUnmountedRef = useRef(false);
+  const sentColsRef = useRef(0);
+  // Following: keep the cursor on screen as output arrives. Dropped when the
+  // user scrolls it out of view, restored when they scroll back to it.
+  const followRef = useRef(true);
+  const followTimerRef = useRef(0);
+  const followDeadlineRef = useRef(0);
+  const [cursorAway, setCursorAway] = useState<CursorPlace>('visible');
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(true);
+  const [everConnected, setEverConnected] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [selectText, setSelectText] = useState<string | null>(null);
   const selectTextRef = useRef<string | null>(null);
   selectTextRef.current = selectText;
@@ -123,12 +180,26 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
   const [unwrapCopy, setUnwrapCopy] = useState<boolean>(loadUnwrapCopy);
   const unwrapCopyRef = useRef(unwrapCopy);
   unwrapCopyRef.current = unwrapCopy;
+  const transformRef = useRef(transformInput);
+  transformRef.current = transformInput;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  const settings = useSettings();
+  const themeKey = useThemeKey();
 
   const toggleUnwrapCopy = useCallback(() => {
     setUnwrapCopy((v) => {
       try { localStorage.setItem(UNWRAP_COPY_KEY, v ? '0' : '1'); } catch { /* ignore */ }
       return !v;
     });
+  }, []);
+
+  // Settings can flip the same preference.
+  useEffect(() => {
+    const sync = () => setUnwrapCopy(loadUnwrapCopy());
+    window.addEventListener(UNWRAP_COPY_EVENT, sync);
+    return () => window.removeEventListener(UNWRAP_COPY_EVENT, sync);
   }, []);
 
   // Text of the native selection inside the select overlay, unwrapped when
@@ -164,31 +235,80 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     onConnectionChange?.(connected, connecting);
   }, [connected, connecting, onConnectionChange]);
 
+  // A first connection that takes a while gets a "Connecting…" notice.
+  useEffect(() => {
+    if (connected) { setSlow(false); return; }
+    const id = window.setTimeout(() => setSlow(true), 700);
+    return () => window.clearTimeout(id);
+  }, [connected]);
+
+  const updatePlace = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const term = terminalRef.current;
+    if (!container || !term || container.clientHeight === 0) return;
+    const place = cursorPlace(container, term);
+    followRef.current = place === 'visible';
+    setCursorAway(place);
+  }, []);
+
+  // Bring the cursor back on screen if we are following it. Coalesced: a TUI
+  // repaint parks the cursor in odd places mid-frame, and chasing each of
+  // those would make the view jitter.
+  const followSoon = useCallback(() => {
+    const now = performance.now();
+    if (!followDeadlineRef.current) followDeadlineRef.current = now + 220;
+    window.clearTimeout(followTimerRef.current);
+    const run = () => {
+      followDeadlineRef.current = 0;
+      const container = scrollContainerRef.current;
+      const term = terminalRef.current;
+      if (!container || !term || container.clientHeight === 0) return;
+      if (followRef.current) revealCursor(container, term, false);
+      const place = cursorPlace(container, term);
+      if (place === 'visible') followRef.current = true;
+      setCursorAway(place);
+    };
+    followTimerRef.current = window.setTimeout(run, Math.max(0, Math.min(40, followDeadlineRef.current - now)));
+  }, []);
+
+  const scrollToCursor = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const term = terminalRef.current;
+    if (!container || !term) return;
+    followRef.current = true;
+    revealCursor(container, term, true);
+    setCursorAway('visible');
+  }, []);
+
   const sendInput = useCallback((data: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'input', data }));
-      manualScrollRef.current = false; // Reset manual scroll when user types
+      // Typing means "take me to the prompt".
+      if (!followRef.current) scrollToCursor();
     }
-  }, []);
+  }, [scrollToCursor]);
 
   const paste = useCallback((text: string) => {
     // terminal.paste() respects bracketed paste mode, so multi-line pastes
     // arrive as one block instead of executing line by line
     terminalRef.current?.paste(text);
-    manualScrollRef.current = false;
   }, []);
 
   const focus = useCallback(() => {
     terminalRef.current?.focus();
   }, []);
 
+  const blur = useCallback(() => {
+    terminalRef.current?.blur();
+  }, []);
+
   const copySelection = useCallback(async () => {
     const term = terminalRef.current;
     const selection = term ? (unwrapCopyRef.current ? getSelectionUnwrapped(term) : term.getSelection()) : '';
-    if (selection) {
-      const ok = await copyText(selection);
-      if (!ok) console.error('Failed to copy selection');
-    }
+    if (!selection) return false;
+    const ok = await copyText(selection);
+    if (!ok) console.error('Failed to copy selection');
+    return ok;
   }, []);
 
   const hasSelection = useCallback(() => {
@@ -217,7 +337,10 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
   const exitSelectMode = useCallback(() => {
     setSelectText(null);
     setCopiedAll(false);
-    terminalRef.current?.focus();
+    window.getSelection()?.removeAllRanges();
+    // Back to typing on desktop. On touch, focusing would pop the keyboard
+    // open over the text the user just came to read.
+    if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) terminalRef.current?.focus();
   }, []);
 
   const handleCopyAll = useCallback(async () => {
@@ -240,86 +363,58 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     }
   }, [selectText]);
 
-  const scrollUp = useCallback(() => {
-    if (scrollContainerRef.current) {
-      manualScrollRef.current = true;
-      scrollContainerRef.current.scrollBy({ top: -300, behavior: 'smooth' });
-    }
+  // Columns that fit the container at the current font. Returns the count,
+  // or 0 when the terminal isn't laid out (hidden tab).
+  const fitCols = useCallback((): number => {
+    const term = terminalRef.current;
+    const inner = containerRef.current;
+    if (!term || !inner || inner.clientWidth === 0) return 0;
+    const cellW = cellSize(term)?.w ?? (term.options.fontSize ?? 14) * 0.6;
+    const cols = Math.max(MIN_COLS, Math.floor((inner.clientWidth - PAD_X) / cellW));
+    if (cols !== term.cols) term.resize(cols, TERMINAL_ROWS);
+    return cols;
   }, []);
 
-  const scrollDown = useCallback(() => {
-    if (scrollContainerRef.current) {
-      manualScrollRef.current = true;
-      scrollContainerRef.current.scrollBy({ top: 300, behavior: 'smooth' });
+  // Fit, and tell the server when the width changed (or `force`: new socket).
+  const syncSize = useCallback((force = false) => {
+    const cols = fitCols();
+    const ws = wsRef.current;
+    if (!cols || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (force || cols !== sentColsRef.current) {
+      sentColsRef.current = cols;
+      ws.send(JSON.stringify({ type: 'resize', cols, rows: TERMINAL_ROWS }));
     }
-  }, []);
-
-  // Handle visual viewport changes (keyboard appearing/disappearing)
-  useEffect(() => {
-    const updateViewportHeight = () => {
-      if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height);
-      }
-    };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateViewportHeight);
-      updateViewportHeight();
-    }
-
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateViewportHeight);
-      }
-    };
-  }, []);
-
-  // Scroll to cursor position when viewport height changes (keyboard appears)
-  // Only scroll if needed to keep cursor visible, and scroll to cursor not to bottom
-  useEffect(() => {
-    // Skip if user manually scrolled via buttons
-    if (manualScrollRef.current) return;
-
-    if (scrollContainerRef.current && terminalRef.current && viewportHeight !== null) {
-      // Only scroll if the cursor is hidden (e.g. keyboard pushed it off screen),
-      // and never upward.
-      scrollDownToCursor(scrollContainerRef.current, terminalRef.current, true);
-    }
-  }, [viewportHeight]);
+  }, [fitCols]);
 
   const connectWebSocket = useCallback(() => {
     if (isUnmountedRef.current) return;
 
     setConnecting(true);
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal?session=${encodeURIComponent(sessionName)}${context ? `&context=${encodeURIComponent(context)}` : ''}`;
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl(`/ws/terminal?session=${encodeURIComponent(sessionName)}${context ? `&context=${encodeURIComponent(context)}` : ''}`));
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (wsRef.current !== ws) return;
       setConnected(true);
       setConnecting(false);
-
-      if (scrollContainerRef.current) {
-        const containerWidth = scrollContainerRef.current.clientWidth - 16;
-        const charWidth = 8.4;
-        const cols = Math.floor(containerWidth / charWidth);
-        ws.send(JSON.stringify({ type: 'resize', cols: Math.max(cols, 40), rows: TERMINAL_ROWS }));
-      }
+      setEverConnected(true);
+      followRef.current = true;
+      syncSize(true);
     };
 
     ws.onmessage = (event) => {
-      if (terminalRef.current) {
-        terminalRef.current.write(event.data);
-      }
+      if (wsRef.current !== ws) return;
+      terminalRef.current?.write(event.data);
     };
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return;
       setConnected(false);
       setConnecting(false);
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       setConnected(false);
       setConnecting(false);
 
@@ -335,42 +430,66 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
         }
       }, 2000);
     };
-  }, [sessionName, context]);
+  }, [sessionName, context, syncSize]);
+
+  // Drop whatever socket we have and attach again, now.
+  const reconnect = useCallback(() => {
+    if (isUnmountedRef.current) return;
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    const old = wsRef.current;
+    wsRef.current = null;
+    if (old) {
+      old.onopen = old.onmessage = old.onerror = old.onclose = null;
+      try { old.close(); } catch { /* already closed */ }
+    }
+    setConnected(false);
+    connectWebSocket();
+  }, [connectWebSocket]);
+
+  // Coming back to the foreground / network: don't sit out the retry timer,
+  // and don't trust a socket that sat suspended for a long time.
+  useEffect(() => {
+    let hiddenAt = 0;
+    const wake = (stale: boolean) => {
+      const ws = wsRef.current;
+      const alive = ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING);
+      if (!alive || stale) reconnect();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const stale = hiddenAt > 0 && Date.now() - hiddenAt > STALE_AFTER_MS;
+      hiddenAt = 0;
+      wake(stale);
+    };
+    const onOnline = () => wake(false);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', onOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [reconnect]);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    isUnmountedRef.current = false;
 
     const terminal = new XTerm({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontSize: getSettings().fontSize,
+      fontFamily: FONT_FAMILY,
       rows: TERMINAL_ROWS,
       cols: 80,
       scrollback: 0, // Disable internal scrollback since we're using container scroll
-      theme: {
-        background: '#1a1a2e',
-        foreground: '#e2e8f0',
-        cursor: '#4fd1c5',
-        cursorAccent: '#1a1a2e',
-        selectionBackground: 'rgba(79, 209, 197, 0.4)',
-        selectionForeground: '#ffffff',
-        black: '#3f3f46',
-        red: '#f87171',
-        green: '#4ade80',
-        yellow: '#facc15',
-        blue: '#60a5fa',
-        magenta: '#c084fc',
-        cyan: '#4fd1c5',
-        white: '#e2e8f0',
-        brightBlack: '#71717a',
-        brightRed: '#fca5a5',
-        brightGreen: '#86efac',
-        brightYellow: '#fde047',
-        brightBlue: '#93c5fd',
-        brightMagenta: '#d8b4fe',
-        brightCyan: '#5eead4',
-        brightWhite: '#f8fafc',
-      },
+      theme: terminalTheme(),
+      minimumContrastRatio: terminalMinContrast(),
+      // Bold is a weight, not a colour shift: "bold black on blue" (the tmux
+      // status badge) must stay black. The contrast floor above covers the
+      // old habit of using bold black as a dim grey on the background.
+      drawBoldTextInBrightColors: false,
       allowProposedApi: true,
     });
 
@@ -391,11 +510,6 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       }
       return flat.length > 0 && flat.every((p) => MOUSE_TRACKING_MODES.has(p));
     });
-
-    // Load fit addon
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
-    fitAddonRef.current = fitAddon;
 
     // Linkify URLs, joining URLs hard-wrapped across lines (Claude Code
     // indents and wraps long ones) into a single clickable link
@@ -438,37 +552,53 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     const scrollContainer = scrollContainerRef.current;
     const handleWheelCapture = (e: WheelEvent) => {
       e.stopPropagation();
-      manualScrollRef.current = true; // same as the scroll buttons: don't auto-jump to cursor
     };
     scrollContainer?.addEventListener('wheel', handleWheelCapture, {
       capture: true,
       passive: true,
     });
 
+    // The user scrolling decides whether we keep following the cursor; our
+    // own scrolls land with the cursor visible, so they read as "following".
+    const handleScroll = () => updatePlace();
+    scrollContainer?.addEventListener('scroll', handleScroll, { passive: true });
+
     // WebGL disabled — causes glyph corruption on this system (Playwright Chrome install may have broken GPU context)
     // Using xterm.js DOM renderer instead
 
-    // Get the actual column width based on container
-    const updateCols = () => {
-      if (scrollContainerRef.current) {
-        const containerWidth = scrollContainerRef.current.clientWidth - 16; // padding
-        const charWidth = 8.4; // approximate char width for 14px font
-        const cols = Math.floor(containerWidth / charWidth);
-        terminal.resize(Math.max(cols, 40), TERMINAL_ROWS);
-      }
-    };
+    requestAnimationFrame(() => syncSize());
 
-    requestAnimationFrame(updateCols);
+    // xterm measured its cell with whatever font was available at open(). Once
+    // the bundled mono has loaded, measure again: the fallback's advance width
+    // differs, and the column count is derived from it.
+    let fontsCancelled = false;
+    const remeasure = () => {
+      if (fontsCancelled || terminalRef.current !== terminal) return;
+      const family = terminal.options.fontFamily;
+      terminal.options.fontFamily = `${family}, monospace`;
+      terminal.options.fontFamily = family;
+      syncSize();
+      followSoon();
+    };
+    const size = getSettings().fontSize;
+    Promise.all([
+      document.fonts?.load(`${size}px 'JetBrains Mono'`),
+      document.fonts?.load(`bold ${size}px 'JetBrains Mono'`),
+    ]).then(remeasure, () => {});
 
     // Connect WebSocket
     connectWebSocket();
 
     // Handle terminal input
     terminal.onData((data) => {
+      const out = transformRef.current ? transformRef.current(data) : data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data }));
+        wsRef.current.send(JSON.stringify({ type: 'input', data: out }));
+        if (!followRef.current && !TERMINAL_REPORT.test(data)) scrollToCursor();
       }
     });
+
+    terminal.onWriteParsed(() => followSoon());
 
     // Inputs that manage their own clipboard (rich-text box, etc.) — the
     // document-level handlers below must leave those alone.
@@ -487,7 +617,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
         const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
         const form = new FormData();
         form.append('file', file, `pasted-image.${ext}`);
-        const res = await fetch('/api/paste-image', { method: 'POST', body: form });
+        const res = await fetch(`${API}/api/paste-image`, { method: 'POST', body: form });
         if (!res.ok) throw new Error(`upload failed: ${res.status}`);
         const { path } = await res.json();
         terminal.paste(path);
@@ -500,6 +630,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     // body, xterm's hidden textarea). Images are uploaded to the server and
     // their path typed into the terminal for CLI tools to read.
     const handlePasteEvent = (e: ClipboardEvent) => {
+      if (!activeRef.current) return;
       if (isForeignTarget(e.target)) return;
       if (!e.clipboardData) return;
       e.preventDefault();
@@ -519,6 +650,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     // Document-level copy: covers Edit-menu / context-menu copy while an
     // xterm selection is active (there's no DOM selection to copy natively)
     const handleCopyEvent = (e: ClipboardEvent) => {
+      if (!activeRef.current) return;
       if (!e.clipboardData) return;
       // Native selection inside the select overlay (mobile long-press flow)
       const overlayText = getOverlaySelection();
@@ -572,33 +704,26 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     scrollEl?.addEventListener('touchend', clearTouchTimer, { passive: true });
     scrollEl?.addEventListener('touchcancel', clearTouchTimer, { passive: true });
 
-    // Handle container resize - also notify server of new size
+    // Container resized (rotation, keyboard, window): refit the columns, tell
+    // the server, and keep the cursor in view if we were following it.
     const resizeObserver = new ResizeObserver(() => {
-      updateCols();
-      if (wsRef.current?.readyState === WebSocket.OPEN && scrollContainerRef.current) {
-        const containerWidth = scrollContainerRef.current.clientWidth - 16;
-        const charWidth = 8.4;
-        const cols = Math.floor(containerWidth / charWidth);
-        wsRef.current.send(JSON.stringify({ type: 'resize', cols: Math.max(cols, 40), rows: TERMINAL_ROWS }));
-      }
+      syncSize();
+      followSoon();
     });
     if (scrollContainerRef.current) {
       resizeObserver.observe(scrollContainerRef.current);
     }
 
     // Expose methods to parent
-    onReady({ sendInput, paste, focus, copySelection, hasSelection, enterSelectMode, scrollUp, scrollDown });
-
-    // Scroll to cursor position initially
-    if (scrollContainerRef.current) {
-      scrollDownToCursor(scrollContainerRef.current, terminal, false);
-    }
+    onReady({ sendInput, paste, focus, blur, copySelection, hasSelection, enterSelectMode, scrollToCursor, reconnect });
 
     return () => {
       isUnmountedRef.current = true;
+      fontsCancelled = true;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      window.clearTimeout(followTimerRef.current);
       document.removeEventListener('paste', handlePasteEvent, true);
       document.removeEventListener('copy', handleCopyEvent, true);
       clearTouchTimer();
@@ -607,20 +732,43 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       scrollEl?.removeEventListener('touchend', clearTouchTimer);
       scrollEl?.removeEventListener('touchcancel', clearTouchTimer);
       scrollContainer?.removeEventListener('wheel', handleWheelCapture, true);
+      scrollContainer?.removeEventListener('scroll', handleScroll);
       resizeObserver.disconnect();
-      wsRef.current?.close();
-      webglAddonRef.current?.dispose();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
       terminal.dispose();
+      terminalRef.current = null;
     };
-  }, [sessionName, onReady, connectWebSocket, sendInput, paste, focus, copySelection, hasSelection, enterSelectMode, scrollUp, scrollDown, getOverlaySelection]);
+  }, [sessionName, onReady, connectWebSocket, reconnect, sendInput, paste, focus, blur, copySelection, hasSelection, enterSelectMode, scrollToCursor, getOverlaySelection, syncSize, followSoon, updatePlace]);
 
-  // Calculate container height based on viewport
-  const containerStyle: React.CSSProperties = viewportHeight
-    ? { height: `${viewportHeight - 140}px` } // Subtract header + control bar + extra padding
-    : { height: '100%' };
+  // Live settings: text size and palette apply to the open terminal.
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term || term.options.fontSize === settings.fontSize) return;
+    term.options.fontSize = settings.fontSize;
+    syncSize();
+    followSoon();
+  }, [settings.fontSize, syncSize, followSoon]);
+
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term) return;
+    term.options.theme = terminalTheme();
+    term.options.minimumContrastRatio = terminalMinContrast();
+  }, [themeKey]);
+
+  // Shown again after being hidden: the size may have changed meanwhile.
+  useEffect(() => {
+    if (!active) return;
+    const id = requestAnimationFrame(() => { syncSize(); followSoon(); });
+    return () => cancelAnimationFrame(id);
+  }, [active, syncSize, followSoon]);
+
+  const palette = terminalTheme();
 
   return (
-    <div className="relative" style={containerStyle}>
+    <div className="terminal-shell">
       <div
         ref={scrollContainerRef}
         className="terminal-scroll-container"
@@ -630,26 +778,46 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
           className="terminal-inner"
         />
       </div>
+
+      {!connected && (everConnected || slow) && (
+        <div className="conn-banner" role="status">
+          <LoaderCircle size={14} className="anim-spin" />
+          <span>{everConnected ? 'Connection lost. Reconnecting…' : 'Connecting…'}</span>
+          <button className="btn btn-sm !min-h-[28px] !px-2.5 !rounded-full" onClick={reconnect}>
+            <RotateCw size={13} /> Retry
+          </button>
+        </div>
+      )}
+
+      {cursorAway !== 'visible' && selectText === null && (
+        <button className="jump-pill" onClick={scrollToCursor} aria-label="Jump to the cursor">
+          {cursorAway === 'below' ? <ArrowDown size={15} strokeWidth={2.25} /> : <ArrowUp size={15} strokeWidth={2.25} />}
+          Cursor
+        </button>
+      )}
+
       {selectText !== null && (
         <div className="select-overlay">
           <div className="select-overlay-bar">
-            <span className="select-overlay-hint">Select text to copy</span>
+            <span className="select-overlay-hint">Select text, then copy</span>
             <button
-              className={`control-btn px-3${unwrapCopy ? ' active' : ''}`}
+              className="btn btn-sm"
+              aria-pressed={unwrapCopy}
               onClick={toggleUnwrapCopy}
               title="Re-join lines that were wrapped to the terminal width when copying"
+              style={unwrapCopy ? { color: 'var(--accent)', background: 'var(--accent-soft)', borderColor: 'var(--accent-line)' } : undefined}
             >
-              {unwrapCopy ? 'Unwrap ✓' : 'Unwrap'}
+              Unwrap
             </button>
-            <button className="control-btn px-3" onClick={handleCopyAll}>
-              {copiedAll ? 'Copied ✓' : 'Copy all'}
+            <button className="btn btn-sm" onClick={handleCopyAll}>
+              {copiedAll ? 'Copied' : 'Copy all'}
             </button>
-            <button className="control-btn active px-3" onClick={exitSelectMode}>
+            <button className="btn btn-sm btn-primary" onClick={exitSelectMode}>
               Done
             </button>
           </div>
           <div ref={overlayScrollRef} className="select-overlay-scroll">
-            <pre className="select-overlay-text">{selectText}</pre>
+            <pre className="select-overlay-text" style={{ fontSize: settings.fontSize, color: palette.foreground }}>{selectText}</pre>
           </div>
         </div>
       )}

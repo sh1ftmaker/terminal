@@ -1,5 +1,5 @@
-// Home view switcher: classic session list ⇄ canvas. The choice is
-// remembered per device (localStorage) by App.tsx.
+// Home view switcher on the canvas: back to the session list, or stay.
+// The choice is remembered per device (localStorage) by App.tsx.
 
 interface HomeTabsProps {
   current: 'list' | 'canvas';
@@ -8,11 +8,9 @@ interface HomeTabsProps {
 }
 
 export default function HomeTabs({ current, onSwitch, glass }: HomeTabsProps) {
-  const base = 'px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors';
   return (
     <div
-      className={`flex gap-0.5 p-1 rounded-full ${glass ? 'glass' : ''}`}
-      style={glass ? undefined : { background: '#252540', border: '1px solid #2d2d4a' }}
+      className={`flex gap-0.5 p-1 rounded-full ${glass ? 'glass' : 'seg'}`}
       role="tablist"
       aria-label="Home view"
     >
@@ -22,10 +20,10 @@ export default function HomeTabs({ current, onSwitch, glass }: HomeTabsProps) {
           role="tab"
           aria-selected={current === v}
           onClick={() => onSwitch(v)}
-          className={base}
+          className="px-3.5 min-h-[34px] rounded-full text-[13px] font-semibold transition-colors"
           style={current === v
-            ? { background: glass ? 'var(--cv-accent)' : '#4fd1c5', color: glass ? 'var(--cv-bg)' : '#1a1a2e' }
-            : { color: glass ? 'var(--cv-ink-dim)' : '#94a3b8' }}
+            ? { background: glass ? 'var(--cv-accent)' : 'var(--accent)', color: glass ? 'var(--cv-bg)' : 'var(--accent-ink)' }
+            : { color: glass ? 'var(--cv-ink-dim)' : 'var(--ink-2)' }}
         >
           {v === 'list' ? 'Sessions' : 'Canvas'}
         </button>
