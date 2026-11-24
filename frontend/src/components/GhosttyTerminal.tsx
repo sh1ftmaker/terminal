@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { init, Terminal as GhosttyTerm, FitAddon } from 'ghostty-web';
+import { wsUrl as baseWsUrl } from '../lib/base';
 
 interface GhosttyTerminalProps {
   sessionName: string;
@@ -126,8 +127,7 @@ export default function GhosttyTerminal({ sessionName, onReady, onConnectionChan
     if (isUnmountedRef.current) return;
 
     setConnecting(true);
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal?session=${sessionName}`;
+    const wsUrl = baseWsUrl(`/ws/terminal?session=${sessionName}`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

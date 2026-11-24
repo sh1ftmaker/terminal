@@ -1,3 +1,4 @@
+import { API, BASE } from './base';
 // Browser-side push subscription helpers.
 //
 // iOS requires the PWA to be installed to the Home Screen before
@@ -40,10 +41,21 @@ function arrayBufferToBase64(buf: ArrayBuffer | null): string {
   return btoa(s);
 }
 
+// Our own registration, never an ancestor scope's. When the app is mounted
+// under a path prefix on someone else's origin (BASE = "/lp/<port>/"), a bare
+// getRegistration() falls back to the host app's root-scope worker — and
+// unsubscribing "ours" would silently kill the host's push subscription.
+async function ownRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null;
+  const scope = new URL(BASE, window.location.href).href;
+  const reg = await navigator.serviceWorker.getRegistration(scope);
+  return reg && reg.scope === scope ? reg : null;
+}
+
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
   try {
-    return await navigator.serviceWorker.register('/sw.js');
+    return await navigator.serviceWorker.register(`${BASE}sw.js`, { scope: BASE });
   } catch (e) {
     console.error('SW registration failed:', e);
     return null;
@@ -80,7 +92,7 @@ export async function getPushState(): Promise<PushState> {
 async function reconcileSubscription(reg: ServiceWorkerRegistration): Promise<PushState> {
   let serverKey: string | null = null;
   try {
-    const res = await fetch('/api/push/vapid-public-key');
+    const res = await fetch(`${API}/api/push/vapid-public-key`);
     serverKey = (await res.json()).publicKey ?? null;
   } catch {
     // offline / server down: fall back to reporting local state only
@@ -91,7 +103,9 @@ async function reconcileSubscription(reg: ServiceWorkerRegistration): Promise<Pu
     try { await sub.unsubscribe(); } catch { /* ignore */ }
     sub = null;
   }
-  if (!sub && serverKey && Notification.permission === 'granted') {
+  // Self-heal only at the origin root. Under a path prefix the permission
+  // was granted to the host app, not to us: wait for an explicit tap.
+  if (!sub && serverKey && Notification.permission === 'granted' && BASE === '/') {
     try {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -115,7 +129,7 @@ function keyMatches(sub: PushSubscription, serverKey: string): boolean {
 
 async function registerWithServer(sub: PushSubscription, label?: string): Promise<void> {
   const subJson = sub.toJSON() as { keys?: { p256dh?: string; auth?: string } };
-  await fetch('/api/push/subscribe', {
+  await fetch(`${API}/api/push/subscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -136,7 +150,7 @@ export async function subscribeUserToPush(label?: string): Promise<PushState> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return { status: 'denied' };
 
-  const res = await fetch('/api/push/vapid-public-key');
+  const res = await fetch(`${API}/api/push/vapid-public-key`);
   const { publicKey } = await res.json();
   let sub = await reg.pushManager.getSubscription();
   if (sub && !keyMatches(sub, publicKey)) {
@@ -159,13 +173,13 @@ export async function subscribeUserToPush(label?: string): Promise<PushState> {
 
 export async function unsubscribeFromPush(): Promise<PushState> {
   if (!('serviceWorker' in navigator)) return { status: 'unsupported', reason: 'no SW' };
-  const reg = await navigator.serviceWorker.getRegistration();
+  const reg = await ownRegistration();
   if (!reg) return { status: 'unsubscribed' };
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return { status: 'unsubscribed' };
   const endpoint = sub.endpoint;
   await sub.unsubscribe();
-  await fetch('/api/push/subscribe', {
+  await fetch(`${API}/api/push/subscribe`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ endpoint }),

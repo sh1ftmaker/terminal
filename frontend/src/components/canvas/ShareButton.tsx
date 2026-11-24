@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { localPortOf } from '../../lib/frameSrc';
+import { localProxyPath } from '../../lib/base';
 import { createShare, fetchShares, remainingLabel, revokeShare, type ShareInfo, type ShareState } from '../../lib/share';
 
 interface ShareButtonProps {
@@ -76,7 +77,7 @@ export default function ShareButton({ url, headerHeight }: ShareButtonProps) {
 
   const shareFor = (minutes?: number) => run(async () => { setShare(await createShare(port, minutes)); setOpen(true); });
   const stop = () => run(async () => { await revokeShare(port); setShare(null); setOpen(false); });
-  const publicUrl = share?.url ?? (limits?.origin ? `${limits.origin}/lp/${port}/` : `/lp/${port}/`);
+  const publicUrl = share?.url ?? (limits?.origin ? `${limits.origin}/lp/${port}/` : localProxyPath(port));
   const copy = async () => {
     try { await navigator.clipboard.writeText(publicUrl); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch { /* no clipboard */ }
   };

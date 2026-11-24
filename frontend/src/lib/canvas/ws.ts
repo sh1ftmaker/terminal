@@ -2,6 +2,7 @@
 // ops, presence. Reconnects with backoff and resubscribes automatically.
 
 import { canvasStore } from './store';
+import { wsUrl } from '../base';
 import type { Op, ScreenFrame, VoicePresence } from './types';
 
 type ScreenListener = (frame: ScreenFrame) => void;
@@ -33,8 +34,7 @@ class CanvasSocket {
 
   private connect() {
     if (!this.wanted || this.ws) return;
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/canvas`);
+    const ws = new WebSocket(wsUrl('/ws/canvas'));
     this.ws = ws;
 
     ws.onopen = () => {

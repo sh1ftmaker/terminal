@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ChatMessage from './ChatMessage.tsx';
 import ChatComposer from './ChatComposer.tsx';
+import { API, wsUrl as chatWsUrl } from '../lib/base';
 
 interface ChatViewProps {
   sessionName: string;
@@ -101,8 +102,7 @@ export default function ChatView({ sessionName }: ChatViewProps) {
   const connectWebSocket = useCallback(() => {
     if (isUnmountedRef.current) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/chat?session=${sessionName}`;
+    const wsUrl = chatWsUrl(`/ws/chat?session=${sessionName}`);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -274,7 +274,7 @@ export default function ChatView({ sessionName }: ChatViewProps) {
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch('/api/chat/history');
+      const res = await fetch(`${API}/api/chat/history`);
       const data = await res.json();
       setHistorySessions(data);
     } catch {

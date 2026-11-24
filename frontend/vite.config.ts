@@ -11,6 +11,10 @@ const extraHosts = (process.env.VITE_ALLOWED_HOSTS || '')
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative asset URLs: the built app must work at the origin root *and*
+  // under a path prefix (e.g. another server's /lp/<port>/ proxy). Runtime
+  // paths (API, websockets, routes) come from src/lib/base.ts.
+  base: './',
   plugins: [react(), tailwindcss()],
   server: {
     allowedHosts: extraHosts.length > 0 ? extraHosts : undefined,

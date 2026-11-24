@@ -16,6 +16,7 @@ import type { BrowserRect, TileRect } from '../../lib/canvas/types';
 import { isAppLocal, localPortOf } from '../../lib/frameSrc';
 import { useStage } from './CanvasStage';
 import ShareButton from './ShareButton';
+import { API, localProxyPath } from '../../lib/base';
 
 const HEADER_H = 38;
 
@@ -58,15 +59,15 @@ export default function BrowserTile({ id, rect, selected, onSelect }: BrowserTil
   const lp = url && !isAppLocal() ? localPortOf(url) : null;
   const mode: 'lp' | 'proxy' | 'direct' = lp ? 'lp' : proxied && url ? 'proxy' : 'direct';
   const frameSrc =
-    lp ? `/lp/${lp.port}${lp.path}` :
-    mode === 'proxy' ? `/api/proxy?url=${encodeURIComponent(url)}` : url;
+    lp ? localProxyPath(lp.port, lp.path) :
+    mode === 'proxy' ? `${API}/api/proxy?url=${encodeURIComponent(url)}` : url;
 
   // lp frames are our own origin — track in-frame navigation directly.
   const onFrameLoad = () => {
     if (mode !== 'lp') return;
     try {
       const loc = iframeRef.current?.contentWindow?.location;
-      const m = loc && `${loc.pathname}${loc.search}`.match(/^\/lp\/(\d{1,5})(\/[^]*)?$/);
+      const m = loc && `${loc.pathname}${loc.search}`.match(/\/lp\/(\d{1,5})(\/[^]*)?$/);
       if (m) {
         const actual = `http://localhost:${m[1]}${m[2] || '/'}`;
         if (actual !== rect.url) canvasSocket.sendOp({ kind: 'browser', id, url: actual });
@@ -80,7 +81,7 @@ export default function BrowserTile({ id, rect, selected, onSelect }: BrowserTil
   useEffect(() => {
     if (mode !== 'direct' || !url) return;
     let cancelled = false;
-    fetch(`/api/proxy/check?url=${encodeURIComponent(url)}`)
+    fetch(`${API}/api/proxy/check?url=${encodeURIComponent(url)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!cancelled && j && j.frameable === false) {

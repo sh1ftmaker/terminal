@@ -1,3 +1,4 @@
+import { API } from './base';
 // Client for the public share grants (/api/share): a local port can be made
 // reachable on the public share hostname for a limited time. Default off.
 
@@ -24,11 +25,11 @@ async function asJson<T>(r: Response): Promise<T> {
 }
 
 export function fetchShares(): Promise<ShareState> {
-  return fetch('/api/share').then((r) => asJson<ShareState>(r));
+  return fetch(`${API}/api/share`).then((r) => asJson<ShareState>(r));
 }
 
 export function createShare(port: number, minutes?: number, label?: string): Promise<ShareInfo> {
-  return fetch('/api/share', {
+  return fetch(`${API}/api/share`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ port, minutes, label }),
@@ -36,7 +37,7 @@ export function createShare(port: number, minutes?: number, label?: string): Pro
 }
 
 export function revokeShare(port: number): Promise<void> {
-  return fetch(`/api/share/${port}`, { method: 'DELETE' }).then((r) => asJson<unknown>(r)).then(() => undefined);
+  return fetch(`${API}/api/share/${port}`, { method: 'DELETE' }).then((r) => asJson<unknown>(r)).then(() => undefined);
 }
 
 /** "42m", "3h 05m", "2d 1h" — how long until expiresAt. */
@@ -113,25 +114,25 @@ export interface Overview {
 }
 
 export function fetchOverview(): Promise<Overview> {
-  return fetch('/api/share/overview').then((r) => asJson<Overview>(r));
+  return fetch(`${API}/api/share/overview`).then((r) => asJson<Overview>(r));
 }
 
 export function approveRequest(id: string, minutes?: number): Promise<{ request: ShareRequest; share: ShareInfo | null }> {
-  return fetch(`/api/share/requests/${id}/approve`, {
+  return fetch(`${API}/api/share/requests/${id}/approve`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ minutes }),
   }).then((r) => asJson(r));
 }
 
 export function denyRequest(id: string): Promise<{ request: ShareRequest }> {
-  return fetch(`/api/share/requests/${id}/deny`, { method: 'POST' }).then((r) => asJson(r));
+  return fetch(`${API}/api/share/requests/${id}/deny`, { method: 'POST' }).then((r) => asJson(r));
 }
 
 export function setPortLabel(port: number, label: string): Promise<{ port: number; label: string | null }> {
-  return fetch(`/api/ports/${port}/label`, {
+  return fetch(`${API}/api/ports/${port}/label`, {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ label }),
   }).then((r) => asJson(r));
 }
 
 export function stopPort(port: number): Promise<{ stopped: boolean; method: string; target: string }> {
-  return fetch(`/api/ports/${port}/stop`, { method: 'POST' }).then((r) => asJson(r));
+  return fetch(`${API}/api/ports/${port}/stop`, { method: 'POST' }).then((r) => asJson(r));
 }

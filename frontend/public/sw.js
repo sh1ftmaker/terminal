@@ -17,6 +17,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// The app may be mounted under a path prefix (the worker's scope), so every
+// app-relative path in a payload ("/?session=x", "/icon-192.png") is resolved
+// against the scope instead of the origin root. Absolute URLs pass through.
+function inScope(path) {
+  return new URL(String(path || '').replace(/^\/+/, ''), self.registration.scope).href;
+}
+
 self.addEventListener('push', (event) => {
   /** @type {{ title?: string, body?: string, url?: string, tag?: string, icon?: string, data?: object }} */
   let payload = {};
@@ -32,11 +39,11 @@ self.addEventListener('push', (event) => {
     body: payload.body || '',
     tag: payload.tag || 'default',
     renotify: true,
-    icon: payload.icon || '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: inScope(payload.icon || 'icon-192.png'),
+    badge: inScope('icon-192.png'),
     data: {
-      url: payload.url || '/',
       ...(payload.data || {}),
+      url: inScope((payload.data && payload.data.url) || payload.url || ''),
     },
   };
 
@@ -45,12 +52,15 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const url = (event.notification.data && event.notification.data.url) || self.registration.scope;
   event.waitUntil(
     (async () => {
-      const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // Only our own windows: under a path prefix the origin is shared with
+      // the host app, whose tabs must not be focused or navigated by us.
+      const allClients = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+        .filter((c) => c.url.startsWith(self.registration.scope));
       // If we already have a window open, focus it. Prefer one already on this URL.
-      const exact = allClients.find((c) => c.url.endsWith(url));
+      const exact = allClients.find((c) => c.url === url);
       if (exact) return exact.focus();
       if (allClients.length > 0) {
         const client = allClients[0];

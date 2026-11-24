@@ -3,6 +3,8 @@
 // through the server's path-preserving local proxy (/lp/<port>/...), which
 // forwards assets, XHR, and websockets to 127.0.0.1:<port>.
 
+import { localProxyPath } from './base';
+
 export function isAppLocal(): boolean {
   return /^(localhost|127\.)/.test(window.location.hostname);
 }
@@ -17,5 +19,5 @@ export function localPortOf(url: string): { port: number; path: string } | null 
 export function resolveFrameSrc(url: string): string {
   if (isAppLocal()) return url;
   const lp = localPortOf(url);
-  return lp ? `/lp/${lp.port}${lp.path}` : url;
+  return lp ? localProxyPath(lp.port, lp.path) : url;
 }

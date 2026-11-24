@@ -1,3 +1,4 @@
+import { API } from '../base';
 // Grok Voice realtime agent for the canvas.
 //
 // Connects the browser directly to wss://api.x.ai/v1/realtime using an
@@ -193,7 +194,7 @@ export class VoiceAgent {
     this.sleeping = false;
     this.setStatus('connecting');
     try {
-      const tokenRes = await fetch('/api/voice/token', { method: 'POST' });
+      const tokenRes = await fetch(`${API}/api/voice/token`, { method: 'POST' });
       if (tokenRes.status === 503) { this.setStatus('nokey'); return; }
       if (!tokenRes.ok) throw new Error(`token mint failed (${tokenRes.status})`);
       const { token } = await tokenRes.json();
