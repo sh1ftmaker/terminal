@@ -27,6 +27,7 @@ cd "$DEMO_REPO/server"
 exec env -i "${demo_base_env[@]}" "${contexts_env[@]}" \
   NODE_ENV=production \
   PORT="$DEMO_PORT" HOST=127.0.0.1 TERMINAL_TCP=1 \
+  RESERVED_PORTS="$DEMO_PROTECT_PORTS" \
   TMUX_SOCKET="$DEMO_TMUX_SOCKET" \
   TERMINAL_SOCKET="${DEMO_RUNTIME_DIR}/server.sock" \
   TERMINAL_SHARE_SOCKET="${DEMO_RUNTIME_DIR}/share.sock" \

@@ -167,6 +167,7 @@ Key service features:
 | `MAX_FILE_SIZE` | `6291456` (6MB) | Max size the file viewer will load |
 | `CLAUDE_META_DIR` | `/tmp/claude-terminal-meta` | Where the Claude hook writes per-session metadata |
 | `VITE_ALLOWED_HOSTS` | — | Comma-separated extra hosts Vite accepts in dev (e.g. a tunnel domain) |
+| `RESERVED_PORTS` | — | Extra ports (comma-separated) the Ports panel may neither share nor stop, besides the server's own |
 
 Copy `.env.example` to `.env` for a template you can edit.
 

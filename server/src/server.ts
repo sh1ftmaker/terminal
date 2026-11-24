@@ -202,7 +202,14 @@ registerProxyRoutes(app);
 // Public share grants (time-limited, per-port, default off). The management
 // routes live here on the owner-only app; the public listener is started
 // alongside the main one below.
-initShare({ reservedPorts: [Number(PORT)], publicOrigin: process.env.TERMINAL_SHARE_ORIGIN, contexts: contexts?.contexts ?? [] });
+// Ports the UI may neither share nor stop: our own, plus any listed in
+// RESERVED_PORTS (comma-separated) — e.g. another terminal server on this
+// machine when a second instance runs next to it.
+const RESERVED_PORTS = [
+  Number(PORT),
+  ...(process.env.RESERVED_PORTS || '').split(',').map((p) => Number(p.trim())).filter((p) => Number.isInteger(p) && p > 0),
+];
+initShare({ reservedPorts: RESERVED_PORTS, publicOrigin: process.env.TERMINAL_SHARE_ORIGIN, contexts: contexts?.contexts ?? [] });
 registerShareRoutes(app);
 registerVoiceRoutes(app, (req) => {
   const name = (req.query.context as string) || (req.body?.context as string) || '';
