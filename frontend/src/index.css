@@ -840,23 +840,6 @@ html[data-kb='open'] {
     border-bottom: 1px solid var(--line);
   }
 
-  /* Terminal view: every pixel of height goes to the terminal. */
-  .appbar-compact {
-    min-height: 40px;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-  .appbar-compact .icon-btn {
-    width: 38px;
-    height: 38px;
-  }
-  .appbar-compact .seg {
-    padding: 2px;
-  }
-  .appbar-compact .seg-item {
-    min-height: 28px;
-  }
-
   /* With the keyboard up in landscape there are barely a dozen rows left:
      the header gives its row back to the terminal. */
   html[data-tight='1'] .appbar-collapsible,
@@ -1027,7 +1010,7 @@ html[data-kb='open'] {
     gap: 4px;
     background: var(--surface);
     border-bottom: 1px solid var(--line);
-    padding: 3px calc(6px + var(--safe-r)) 3px calc(6px + var(--safe-l));
+    padding: 4px calc(6px + var(--safe-r)) 4px calc(6px + var(--safe-l));
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -1045,8 +1028,8 @@ html[data-kb='open'] {
     /* Horizontal swipes scroll the row; keys fire on release. */
     touch-action: pan-x;
     flex: 0 0 auto;
-    min-width: 37px;
-    height: 30px;
+    min-width: 38px;
+    height: 34px;
     padding: 0 7px;
   }
   /* Wide screens: every key fits, so they share the row evenly. */
