@@ -79,6 +79,15 @@ time; long-press, right-click or `…` for actions (open, kill); new session
 in a bottom sheet with a live preview of the sanitised name. Pending share
 requests appear on both panes.
 
+**Contexts** (coordinator mode: one Linux account and tmux server per
+context). A switcher sits under the home header: *All* plus one pill per
+context, in that context's colour, with its session count and a mark when
+something there is waiting for you. It filters Sessions and Ports alike, is
+remembered, and aims *New session*. Sections are headed by context and
+account with a `+` of their own; the new-session sheet says which account
+the shell will run as; the terminal header, session menu and kill
+confirmation all name the context. Single-context installs see none of it.
+
 **Settings** (home header and the terminal's `…`): theme (system / light /
 dark), keep the terminal dark in the light theme, terminal text size,
 unwrap-on-copy, key haptics, notifications, reload.
@@ -94,7 +103,9 @@ viewer.
   utilities like `bg-surface` / `text-ink-2` follow the theme.
 - Design-system classes live in the `base` / `components` cascade layers so
   Tailwind utilities can override them.
-- The app works under a path prefix (`src/lib/base.ts`); see the
-  "mount-path aware" commit.
+- The app works under a path prefix (`src/lib/base.ts`), with localStorage
+  namespaced per mount path (`src/lib/storage.ts`). The server's local proxy
+  no longer follows its Referer fallback to its own port, which used to
+  recurse without end when the app was viewed through another instance.
 - The main bundle went from 1.85 MB to about 0.63 MB (canvas, file viewer and
   chat are lazy chunks; highlight.js uses the common-languages build).

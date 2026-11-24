@@ -8,9 +8,9 @@ A mobile-first web terminal application with tmux-backed session persistence. Bu
 - **Session Persistence**: tmux sessions survive disconnects - reconnect anytime
 - **Multi-Session**: Create and switch between named sessions
 - **File Browser**: Browse and view files (read-only) with syntax highlighting
-- **Mobile Controls**: Touch-friendly control bar with modifier keys (Ctrl, Alt, Shift), arrows, Tab, Esc, and Paste
+- **Mobile Controls**: Key bar above the soft keyboard with sticky Ctrl/Alt, arrows, Tab, Esc, Enter, compose, copy and paste
 - **Agent metadata**: Claude Code hooks publish per-session status / task summary / cwd / preview URL back to the UI
-- **Dark Mode**: Polished dark theme optimized for mobile
+- **Light and dark themes**: follow the system or a setting, including the terminal palette
 
 ## Architecture
 
@@ -153,6 +153,23 @@ Key service features:
 - `ExecStartPre` - ensures tmux server is running before Node starts
 - Shared tmux socket at `/tmp/orchestrator-tmux.sock` (configurable via `TMUX_SOCKET`)
 
+## Isolated demo instance
+
+`scripts/demo/` runs a second, fully private instance next to a production
+install, for trying changes without touching real sessions:
+
+```bash
+(cd server && npx tsc) && (cd frontend && npm run build)
+scripts/demo/start.sh     # http://127.0.0.1:3102, needs sbg
+scripts/demo/stop.sh      # stops it and removes everything it created
+```
+
+It starts from an empty environment and uses its own port, tmux sockets
+(`/tmp/bt-fable-*.sock`), metadata dirs, share socket and state files. When
+the `agent-*` accounts exist it runs in coordinator mode with a generated
+private contexts file. `run-server.sh` / `run-tmux.sh` are the foreground
+pieces if you prefer another supervisor. See `scripts/demo/env.sh`.
+
 ## Configuration
 
 ### Environment Variables
@@ -198,14 +215,36 @@ sudo setfacl -R -d -m u:terminal:rwx /path/to/workspace
 
 ### Mobile Controls
 
-The control bar at the top provides touch-friendly keys:
+The key bar sits at the bottom of the terminal, directly above the soft
+keyboard (two rows on a phone, one row in landscape and on desktop):
 
-- **Ctrl / Alt / Shift**: Toggle modifiers, auto-release after chord
-- **Tab / Esc**: Send immediately
-- **Arrow keys**: Navigation
-- **Paste**: Paste from clipboard
+```
+esc  tab  ⇧tab  ctrl  alt   /   -   |   ⏎
+^C   compose  paste  copy   ←   ↓   ↑   →   keyboard
+```
 
-Example: To send `Ctrl+C`, tap Ctrl (highlights), then tap C in the terminal.
+- **ctrl / alt**: sticky modifiers. Tap arms one for the next key, double-tap
+  locks it, tap again releases. They apply to bar keys (ctrl+arrow,
+  alt+enter) and to what you type on the soft keyboard.
+- **esc, tab, ⇧tab, arrows, enter, ^C**: sent immediately; arrows repeat while held.
+- **compose**: a text field for dictation and long prompts. *Send* types the
+  text and presses Enter; *Insert* only types it.
+- **paste / copy**: clipboard paste; copy the selection, or open a plain-text
+  view of the screen for native text selection (also: long-press the terminal).
+- **keyboard**: show or hide the soft keyboard. Bar keys never change it.
+
+Example: to send `Ctrl+R`, tap **ctrl** (it lights up), then type `r`.
+
+Text size, light/dark theme, key haptics and notifications are under the
+settings button (home header, or `…` in a terminal). See
+[DESIGN.md](DESIGN.md) for the design system.
+
+### Running under a path prefix
+
+The client derives its mount path at runtime, so it also works behind a
+path-prefixing reverse proxy, such as another instance's local proxy at
+`/lp/<port>/`. Saved preferences are namespaced per mount path there, so two
+instances on one origin do not share state.
 
 ## Agent Metadata (Claude Code integration)
 
