@@ -35,20 +35,12 @@ interface TerminalProps {
   active?: boolean;
 }
 
-// The terminal is exactly as tall as the space it has: full-screen apps
-// (Claude Code) fill it, and history is scrolled by tmux, driven by swipes
-// and the wheel (see sendWheel). MIN_ROWS only guards degenerate layouts.
-const MIN_ROWS = 6;
-const INITIAL_ROWS = 24;
-// Rows of finger (or wheel) travel per wheel notch sent to tmux. tmux moves
-// 5 lines per notch in copy mode; apps like Claude Code move about 3.
-const ROWS_PER_NOTCH = 3;
+const TERMINAL_ROWS = 200; // Tall terminal for scrollback history
 const MIN_COLS = 20;
 const FONT_FAMILY = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace";
 // Must match the .xterm padding in index.css.
 const PAD_X = 16;
 const PAD_TOP = 6;
-const PAD_Y = 12; // .xterm top + bottom padding
 // Rows kept visible below the cursor when following it: TUIs (Claude Code)
 // draw their hints and status lines underneath the input.
 const FOLLOW_MARGIN_ROWS = 4;
@@ -174,10 +166,6 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
   const reconnectTimeoutRef = useRef<number | null>(null);
   const isUnmountedRef = useRef(false);
   const sentColsRef = useRef(0);
-  const sentRowsRef = useRef(0);
-  // Net wheel notches scrolled up since the last keystroke. While above 0 a
-  // plain shell's pane is in tmux copy mode, which typing must leave first.
-  const scrolledUpRef = useRef(0);
   // Following: keep the cursor on screen as output arrives. Dropped when the
   // user scrolls it out of view, restored when they scroll back to it.
   const followRef = useRef(true);
@@ -296,20 +284,13 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     setCursorAway('visible');
   }, []);
 
-  // Typed input; leaves tmux copy mode first if we scrolled into it.
-  const sendTyped = useCallback((ws: WebSocket, data: string) => {
-    const exitCopyMode = scrolledUpRef.current > 0;
-    scrolledUpRef.current = 0;
-    ws.send(JSON.stringify(exitCopyMode ? { type: 'input', data, exitCopyMode: true } : { type: 'input', data }));
-  }, []);
-
   const sendInput = useCallback((data: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      sendTyped(wsRef.current, data);
+      wsRef.current.send(JSON.stringify({ type: 'input', data }));
       // Typing means "take me to the prompt".
       if (!followRef.current) scrollToCursor();
     }
-  }, [scrollToCursor, sendTyped]);
+  }, [scrollToCursor]);
 
   const paste = useCallback((text: string) => {
     // terminal.paste() respects bracketed paste mode, so multi-line pastes
@@ -386,49 +367,28 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     }
   }, [selectText]);
 
-  // Columns and rows that fit the container at the current font, or null
-  // when the terminal isn't laid out (hidden tab).
-  const fitSize = useCallback((): { cols: number; rows: number } | null => {
+  // Columns that fit the container at the current font. Returns the count,
+  // or 0 when the terminal isn't laid out (hidden tab).
+  const fitCols = useCallback((): number => {
     const term = terminalRef.current;
     const inner = containerRef.current;
-    const outer = scrollContainerRef.current;
-    if (!term || !inner || !outer || inner.clientWidth === 0 || outer.clientHeight === 0) return null;
+    if (!term || !inner || inner.clientWidth === 0) return 0;
     const cellW = cellSize(term)?.w ?? (term.options.fontSize ?? 14) * 0.6;
     const cols = Math.max(MIN_COLS, Math.floor((inner.clientWidth - PAD_X) / cellW));
-    const rows = Math.max(MIN_ROWS, Math.floor((outer.clientHeight - PAD_Y) / rowHeightOf(inner, term)));
-    if (cols !== term.cols || rows !== term.rows) term.resize(cols, rows);
-    return { cols, rows };
+    if (cols !== term.cols) term.resize(cols, TERMINAL_ROWS);
+    return cols;
   }, []);
 
-  // Fit, and tell the server when the size changed (or `force`: new socket).
+  // Fit, and tell the server when the width changed (or `force`: new socket).
   const syncSize = useCallback((force = false) => {
-    const size = fitSize();
+    const cols = fitCols();
     const ws = wsRef.current;
-    if (!size || !ws || ws.readyState !== WebSocket.OPEN) return;
-    if (force || size.cols !== sentColsRef.current || size.rows !== sentRowsRef.current) {
-      sentColsRef.current = size.cols;
-      sentRowsRef.current = size.rows;
-      ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows }));
+    if (!cols || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (force || cols !== sentColsRef.current) {
+      sentColsRef.current = cols;
+      ws.send(JSON.stringify({ type: 'resize', cols, rows: TERMINAL_ROWS }));
     }
-  }, [fitSize]);
-
-  // One wheel notch per call, as an SGR mouse report at (clientX, clientY).
-  // tmux (mouse on) scrolls its history in copy mode, or hands the wheel to
-  // an app that tracks the mouse (Claude Code scrolls its transcript).
-  // xterm can't do this itself: mouse tracking is swallowed below to keep
-  // local selection.
-  const sendWheel = useCallback((up: boolean, clientX: number, clientY: number) => {
-    const ws = wsRef.current;
-    const term = terminalRef.current;
-    const inner = containerRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !term || !inner) return;
-    const rect = inner.getBoundingClientRect();
-    const cell = cellSize(term) ?? { w: (term.options.fontSize ?? 14) * 0.6, h: rowHeightOf(inner, term) };
-    const col = Math.min(term.cols, Math.max(1, Math.floor((clientX - rect.left - PAD_X / 2) / cell.w) + 1));
-    const row = Math.min(term.rows, Math.max(1, Math.floor((clientY - rect.top - PAD_TOP) / cell.h) + 1));
-    ws.send(JSON.stringify({ type: 'input', data: `\x1b[<${up ? 64 : 65};${col};${row}M` }));
-    scrolledUpRef.current = Math.max(0, scrolledUpRef.current + (up ? 1 : -1));
-  }, []);
+  }, [fitCols]);
 
   const connectWebSocket = useCallback(() => {
     if (isUnmountedRef.current) return;
@@ -525,9 +485,9 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       cursorBlink: true,
       fontSize: getSettings().fontSize,
       fontFamily: FONT_FAMILY,
-      rows: INITIAL_ROWS,
+      rows: TERMINAL_ROWS,
       cols: 80,
-      scrollback: 0, // history lives in tmux (scrolled with sendWheel)
+      scrollback: 0, // Disable internal scrollback since we're using container scroll
       theme: terminalTheme(),
       minimumContrastRatio: terminalMinContrast(),
       // Bold is a weight, not a colour shift: "bold black on blue" (the tmux
@@ -594,21 +554,12 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     // scrolling on desktop. Stop wheel events in the capture phase so they
     // never reach xterm and the container scrolls natively.
     const scrollContainer = scrollContainerRef.current;
-    let wheelAcc = 0;
     const handleWheelCapture = (e: WheelEvent) => {
       e.stopPropagation();
-      e.preventDefault();
-      const px = e.deltaMode === 1 ? e.deltaY * rowHeightOf(containerRef.current!, terminal) : e.deltaY;
-      wheelAcc += px;
-      const step = rowHeightOf(containerRef.current!, terminal) * ROWS_PER_NOTCH;
-      while (Math.abs(wheelAcc) >= step) {
-        sendWheel(wheelAcc < 0, e.clientX, e.clientY);
-        wheelAcc -= Math.sign(wheelAcc) * step;
-      }
     };
     scrollContainer?.addEventListener('wheel', handleWheelCapture, {
       capture: true,
-      passive: false,
+      passive: true,
     });
 
     // The user scrolling decides whether we keep following the cursor; our
@@ -646,8 +597,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
     terminal.onData((data) => {
       const out = transformRef.current ? transformRef.current(data) : data;
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        if (TERMINAL_REPORT.test(data)) wsRef.current.send(JSON.stringify({ type: 'input', data: out }));
-        else sendTyped(wsRef.current, out);
+        wsRef.current.send(JSON.stringify({ type: 'input', data: out }));
         if (!followRef.current && !TERMINAL_REPORT.test(data)) scrollToCursor();
       }
     });
@@ -752,33 +702,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
         clearTouchTimer();
       }
     };
-    // One-finger vertical swipes scroll tmux's history (or the app's own).
-    // Finger down = back in time = wheel up.
-    let swipeY: number | null = null;
-    let swipeAcc = 0;
-    const handleSwipeStart = (e: TouchEvent) => {
-      swipeY = e.touches.length === 1 ? e.touches[0].clientY : null;
-      swipeAcc = 0;
-    };
-    const handleSwipeMove = (e: TouchEvent) => {
-      if (swipeY === null || e.touches.length !== 1 || selectTextRef.current !== null) return;
-      const t = e.touches[0];
-      swipeAcc += t.clientY - swipeY;
-      swipeY = t.clientY;
-      if (e.cancelable) e.preventDefault();
-      const step = rowHeightOf(containerRef.current!, terminal) * ROWS_PER_NOTCH;
-      while (Math.abs(swipeAcc) >= step) {
-        sendWheel(swipeAcc > 0, t.clientX, t.clientY);
-        swipeAcc -= Math.sign(swipeAcc) * step;
-      }
-    };
-    const handleSwipeEnd = () => { swipeY = null; };
-
     const scrollEl = scrollContainerRef.current;
-    scrollEl?.addEventListener('touchstart', handleSwipeStart, { passive: true });
-    scrollEl?.addEventListener('touchmove', handleSwipeMove, { passive: false });
-    scrollEl?.addEventListener('touchend', handleSwipeEnd, { passive: true });
-    scrollEl?.addEventListener('touchcancel', handleSwipeEnd, { passive: true });
     scrollEl?.addEventListener('touchstart', handleTouchStart, { passive: true });
     scrollEl?.addEventListener('touchmove', handleTouchMove, { passive: true });
     scrollEl?.addEventListener('touchend', clearTouchTimer, { passive: true });
@@ -811,10 +735,6 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       scrollEl?.removeEventListener('touchmove', handleTouchMove);
       scrollEl?.removeEventListener('touchend', clearTouchTimer);
       scrollEl?.removeEventListener('touchcancel', clearTouchTimer);
-      scrollEl?.removeEventListener('touchstart', handleSwipeStart);
-      scrollEl?.removeEventListener('touchmove', handleSwipeMove);
-      scrollEl?.removeEventListener('touchend', handleSwipeEnd);
-      scrollEl?.removeEventListener('touchcancel', handleSwipeEnd);
       scrollContainer?.removeEventListener('wheel', handleWheelCapture, true);
       scrollContainer?.removeEventListener('scroll', handleScroll);
       resizeObserver.disconnect();
@@ -824,7 +744,7 @@ export default function Terminal({ sessionName, context, onReady, onConnectionCh
       terminal.dispose();
       terminalRef.current = null;
     };
-  }, [sessionName, onReady, connectWebSocket, reconnect, sendInput, paste, focus, blur, copySelection, hasSelection, enterSelectMode, scrollToCursor, getOverlaySelection, syncSize, followSoon, updatePlace, sendWheel, sendTyped]);
+  }, [sessionName, onReady, connectWebSocket, reconnect, sendInput, paste, focus, blur, copySelection, hasSelection, enterSelectMode, scrollToCursor, getOverlaySelection, syncSize, followSoon, updatePlace]);
 
   // Live settings: text size and palette apply to the open terminal.
   useEffect(() => {

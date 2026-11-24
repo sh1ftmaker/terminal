@@ -843,9 +843,7 @@ html[data-kb='open'] {
      home indicator (--safe-b is 0 while the keyboard is up). The composer,
      when open, takes the bottom and pads for it instead. */
   .term-pane:not(.composing) {
-    /* Only part of the inset: the home indicator is a thin line, and a
-       terminal row under its edge stays readable. */
-    padding-bottom: max(0px, calc(var(--safe-b) - 20px));
+    padding-bottom: var(--safe-b);
     background: var(--term-bg);
   }
 

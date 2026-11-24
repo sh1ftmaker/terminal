@@ -1708,32 +1708,13 @@ terminalWss.on('connection', (ws, req) => {
     }
   });
 
-  // Typing after scrolling the history: the pane is in tmux copy mode, where
-  // keys drive the mode instead of the shell. Leave it first (only if the
-  // pane is actually in a mode — an app that took the wheel isn't), then
-  // deliver the keys. Writes are chained so keystrokes stay in order.
-  let inputChain: Promise<void> = Promise.resolve();
-  const leaveCopyMode = async () => {
-    try {
-      const modeCtx = COORDINATOR_MODE && contexts
-        ? mustFindContext(contexts, ctxName || defaultContext(contexts).name)
-        : ALL_CONTEXTS[0];
-      await ctxRunTmuxAsync(modeCtx, ['if-shell', '-F', '-t', `=${sanitized}:`, '#{pane_in_mode}', 'send-keys -X cancel']);
-    } catch { /* best effort */ }
-  };
-
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
       if (data.type === 'resize' && data.cols && data.rows) {
         pty.resize(data.cols, data.rows);
       } else if (data.type === 'input' && data.data) {
-        const text = String(data.data);
-        if (data.exitCopyMode) {
-          inputChain = inputChain.then(leaveCopyMode).then(() => { try { pty.write(text); } catch { /* pty gone */ } });
-        } else {
-          inputChain = inputChain.then(() => { try { pty.write(text); } catch { /* pty gone */ } });
-        }
+        pty.write(data.data);
       }
     } catch {
       pty.write(message.toString());
