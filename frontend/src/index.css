@@ -839,6 +839,13 @@ html[data-kb='open'] {
     min-height: 0;
     background: var(--term-bg);
   }
+  /* The terminal runs to the bottom edge; keep its last row clear of the
+     home indicator (--safe-b is 0 while the keyboard is up). The composer,
+     when open, takes the bottom and pads for it instead. */
+  .term-pane:not(.composing) {
+    padding-bottom: var(--safe-b);
+    background: var(--term-bg);
+  }
 
   /* Outer scroller: the terminal is rendered far taller than the screen and
      scrolled natively (momentum scrolling on touch, wheel on desktop). */
@@ -978,27 +985,38 @@ html[data-kb='open'] {
 
   /* ---------- Key bar ---------- */
 
+  /* One row under the header. */
   .keybar {
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     background: var(--surface);
-    border-top: 1px solid var(--line);
-    padding: 5px calc(5px + var(--safe-r)) calc(5px + var(--safe-b)) calc(5px + var(--safe-l));
+    border-bottom: 1px solid var(--line);
+    padding: 4px calc(6px + var(--safe-r)) 4px calc(6px + var(--safe-l));
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
-  /* Ten columns: the bar continues the grid of the QWERTY row below it. */
-  .keybar-grid {
-    display: grid;
-    grid-template-columns: repeat(10, minmax(0, 1fr));
+  .keybar-row {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     gap: 4px;
-    max-width: 1040px;
-    margin: 0 auto;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
   }
-  /* Wide screens (tablets, desktop, phones in landscape): one row. */
-  @media (min-width: 700px) {
-    .keybar-grid {
-      grid-template-columns: repeat(20, minmax(0, 1fr));
+  .keybar .key {
+    flex: 0 0 auto;
+    min-width: 38px;
+    height: 34px;
+    padding: 0 7px;
+  }
+  /* Wide screens: every key fits, so they share the row evenly. */
+  @media (min-width: 760px) {
+    .keybar-row .key {
+      flex: 1 1 0;
     }
   }
 
@@ -1036,28 +1054,12 @@ html[data-kb='open'] {
   .key-accent {
     color: var(--accent);
   }
-  /* Narrow phones: ten keys still fit, with tighter type. */
+  /* Narrow phones: tighter type. */
   @media (max-width: 374px) {
-    .keybar-grid {
-      gap: 3px;
-    }
     .key {
       font-size: 11px;
       letter-spacing: -0.04em;
     }
-  }
-
-  /* Soft keyboard up: every row counts, so the bar slims down. */
-  html[data-kb='open'] .keybar {
-    padding-top: 3px;
-    padding-bottom: 3px;
-  }
-  html[data-kb='open'] .keybar-grid {
-    gap: 3px;
-  }
-  html[data-kb='open'] .key {
-    height: 32px;
-    border-radius: 7px;
   }
 
   /* Modifier, armed for the next key. */
@@ -1097,13 +1099,10 @@ html[data-kb='open'] {
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    padding: 8px calc(8px + var(--safe-r)) 3px calc(8px + var(--safe-l));
+    padding: 8px calc(8px + var(--safe-r)) calc(8px + var(--safe-b)) calc(8px + var(--safe-l));
     background: var(--surface);
     border-top: 1px solid var(--line);
     animation: rise-in var(--dur) var(--ease) both;
-  }
-  .composer + .keybar {
-    border-top-color: transparent;
   }
   .composer-input {
     flex: 1;

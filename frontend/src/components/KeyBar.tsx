@@ -2,8 +2,8 @@
 // keyboard lacks (Esc, Tab, Ctrl, Alt, arrows) plus the one-tap actions
 // (interrupt, tmux prefix, compose, paste, copy, show/hide keyboard).
 //
-// Two rows of ten on a phone — the same grid as the QWERTY row underneath —
-// and a single row of twenty on anything wider.
+// One compact row under the header: the most-used keys first, the rest
+// scroll sideways on a phone; the keyboard toggle is pinned at the end.
 //
 // Keys never take focus: pressing one must not dismiss the soft keyboard
 // when it is up, nor summon it when it is down.
@@ -120,35 +120,34 @@ export default function KeyBar({ mods, onKey, onModifier, onAction, composeOpen,
 
   return (
     <div className="keybar" role="toolbar" aria-label="Terminal keys">
-      <div className="keybar-grid">
+      <div className="keybar-row no-scrollbar">
         {key('esc', 'esc', 'Escape')}
         {key('tab', 'tab', 'Tab')}
-        {key('backtab', <span className="inline-flex items-center"><ArrowBigUp size={13} strokeWidth={2} /><ArrowRightToLine size={14} strokeWidth={2} /></span>, 'Shift+Tab')}
         <Key label="ctrl" title="Control (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('ctrl')} pressed={mods.ctrl !== 'off'} onPress={() => onModifier('ctrl')} />
         <Key label="alt" title="Alt (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('alt')} pressed={mods.alt !== 'off'} onPress={() => onModifier('alt')} />
-        {key('slash', <span className="text-[15px]">/</span>, 'Slash')}
-        {key('dash', <span className="text-[15px]">-</span>, 'Dash')}
-        {key('pipe', <span className="text-[15px]">|</span>, 'Pipe')}
-        {key('tilde', <span className="text-[15px]">~</span>, 'Tilde')}
-        {key('enter', <CornerDownLeft {...icon} />, 'Enter')}
-
         {key('interrupt', '^C', 'Interrupt (Ctrl+C)', 'key-danger')}
-        {key('prefix', '^B', 'Ctrl+B (tmux prefix)', 'key-quiet')}
-        <Key label={<PenLine {...icon} />} title="Compose: type or dictate, then send" className="key-quiet" haptics={haptics} pressed={composeOpen} onClick={() => onAction('compose')} />
-        <Key label={<ClipboardPaste {...icon} />} title="Paste" className="key-quiet" haptics={haptics} onClick={() => onAction('paste')} />
-        <Key label={<Copy {...icon} />} title="Copy the selection, or select text" className="key-quiet" haptics={haptics} onClick={() => onAction('copy')} />
         {key('left', <ArrowLeft {...icon} />, 'Left')}
         {key('down', <ArrowDown {...icon} />, 'Down')}
         {key('up', <ArrowUp {...icon} />, 'Up')}
         {key('right', <ArrowRight {...icon} />, 'Right')}
-        <Key
-          label={typing ? <KeyboardOff {...icon} /> : <Keyboard {...icon} />}
-          title={typing ? 'Hide keyboard' : 'Show keyboard'}
-          className="key-quiet"
-          haptics={haptics}
-          onClick={() => onAction('keyboard')}
-        />
+        {key('enter', <CornerDownLeft {...icon} />, 'Enter')}
+        {key('backtab', <span className="inline-flex items-center"><ArrowBigUp size={13} strokeWidth={2} /><ArrowRightToLine size={14} strokeWidth={2} /></span>, 'Shift+Tab')}
+        {key('slash', <span className="text-[15px]">/</span>, 'Slash')}
+        {key('dash', <span className="text-[15px]">-</span>, 'Dash')}
+        {key('pipe', <span className="text-[15px]">|</span>, 'Pipe')}
+        {key('tilde', <span className="text-[15px]">~</span>, 'Tilde')}
+        {key('prefix', '^B', 'Ctrl+B (tmux prefix)', 'key-quiet')}
+        <Key label={<PenLine {...icon} />} title="Compose: type or dictate, then send" className="key-quiet" haptics={haptics} pressed={composeOpen} onClick={() => onAction('compose')} />
+        <Key label={<ClipboardPaste {...icon} />} title="Paste" className="key-quiet" haptics={haptics} onClick={() => onAction('paste')} />
+        <Key label={<Copy {...icon} />} title="Copy the selection, or select text" className="key-quiet" haptics={haptics} onClick={() => onAction('copy')} />
       </div>
+      <Key
+        label={typing ? <KeyboardOff {...icon} /> : <Keyboard {...icon} />}
+        title={typing ? 'Hide keyboard' : 'Show keyboard'}
+        className="key-quiet key-pin"
+        haptics={haptics}
+        onClick={() => onAction('keyboard')}
+      />
     </div>
   );
 }

@@ -146,7 +146,17 @@ export default function TerminalPane({ sessionName, context, onConnectionChange,
   }, []);
 
   return (
-    <div ref={rootRef} className="flex flex-col h-full min-h-0">
+    <div ref={rootRef} className={`term-pane flex flex-col h-full min-h-0${composeOpen ? ' composing' : ''}`}>
+      {/* Keys sit at the top so the terminal runs to the bottom edge (or the
+          top of the soft keyboard). */}
+      <KeyBar
+        mods={mods}
+        onKey={handleKey}
+        onModifier={handleModifier}
+        onAction={handleAction}
+        composeOpen={composeOpen}
+        typing={typing}
+      />
       <Terminal
         sessionName={sessionName}
         context={context}
@@ -158,14 +168,6 @@ export default function TerminalPane({ sessionName, context, onConnectionChange,
       {composeOpen && (
         <Composer value={draft} onChange={setDraft} onSend={handleSend} onClose={closeComposer} inputRef={composerRef} />
       )}
-      <KeyBar
-        mods={mods}
-        onKey={handleKey}
-        onModifier={handleModifier}
-        onAction={handleAction}
-        composeOpen={composeOpen}
-        typing={typing}
-      />
     </div>
   );
 }
