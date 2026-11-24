@@ -110,14 +110,14 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
   return (
     <div className="screen anim-fade">
       <div className="statusbar-pad on-bar" />
-      <header className="appbar appbar-collapsible">
+      <header className="appbar appbar-compact appbar-collapsible">
         <button onClick={onBack} className="icon-btn" aria-label="Back to sessions">
-          <ChevronLeft size={24} strokeWidth={2} />
+          <ChevronLeft size={22} strokeWidth={2} />
         </button>
 
         <div className="min-w-0 flex-1 pr-2">
-          <div className="font-mono text-[15px] font-semibold leading-5 truncate" title={sessionName}>{sessionName}</div>
-          <div className="flex items-center gap-1.5 text-[11.5px] leading-4 text-ink-2 min-w-0" title={meta.task ? `${statusText}: ${meta.task}` : statusText}>
+          <div className="font-mono text-[14px] font-semibold leading-[18px] truncate" title={sessionName}>{sessionName}</div>
+          <div className="flex items-center gap-1.5 text-[11px] leading-[14px] text-ink-2 min-w-0" title={meta.task ? `${statusText}: ${meta.task}` : statusText}>
             <span className={dotClass} style={{ width: 7, height: 7, ...(dotTone ? { ['--tone' as string]: dotTone } : {}) }} />
             <span className="truncate font-medium" style={statusColor ? { color: statusColor } : undefined}>{statusText}</span>
             {context && multiContext && (
@@ -131,7 +131,7 @@ export default function TerminalView({ sessionName, context, onBack }: TerminalV
         <Segmented<Tab> label="View" value={activeTab} onChange={selectTab} options={tabs} className="flex-shrink-0 [&_.seg-item]:!px-2.5 sm:[&_.seg-item]:!px-3" />
 
         <button className="icon-btn" onClick={() => setMenuOpen(true)} aria-label="Session menu and settings">
-          <Ellipsis size={21} />
+          <Ellipsis size={20} />
         </button>
       </header>
 
