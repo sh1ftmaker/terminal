@@ -787,10 +787,12 @@ html[data-kb='open'] {
     }
   }
 
+  /* Toasts drop in from the top: the bottom edge belongs to the keyboard
+     and the key bar. */
   .toast {
     position: absolute;
     left: 50%;
-    bottom: calc(var(--safe-b) + 84px);
+    top: calc(var(--safe-t) + 58px);
     z-index: 90;
     transform: translateX(-50%);
     max-width: calc(100% - 32px);
@@ -984,17 +986,18 @@ html[data-kb='open'] {
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
+  /* Ten columns: the bar continues the grid of the QWERTY row below it. */
   .keybar-grid {
     display: grid;
-    grid-template-columns: repeat(9, minmax(0, 1fr));
+    grid-template-columns: repeat(10, minmax(0, 1fr));
     gap: 4px;
-    max-width: 980px;
+    max-width: 1040px;
     margin: 0 auto;
   }
   /* Wide screens (tablets, desktop, phones in landscape): one row. */
   @media (min-width: 700px) {
     .keybar-grid {
-      grid-template-columns: repeat(18, minmax(0, 1fr));
+      grid-template-columns: repeat(20, minmax(0, 1fr));
     }
   }
 
@@ -1012,9 +1015,9 @@ html[data-kb='open'] {
     box-shadow: var(--shadow-key), inset 0 0 0 1px var(--line);
     color: var(--ink);
     font-family: var(--f-mono);
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 500;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
     touch-action: none;
     transition: background var(--dur-fast) var(--ease), transform 70ms var(--ease), color var(--dur-fast) var(--ease);
   }
@@ -1032,14 +1035,14 @@ html[data-kb='open'] {
   .key-accent {
     color: var(--accent);
   }
-  /* The narrowest phones (320px): nine keys still fit, with tighter type. */
-  @media (max-width: 359px) {
+  /* Narrow phones: ten keys still fit, with tighter type. */
+  @media (max-width: 374px) {
     .keybar-grid {
       gap: 3px;
     }
     .key {
       font-size: 11px;
-      letter-spacing: -0.03em;
+      letter-spacing: -0.04em;
     }
   }
 

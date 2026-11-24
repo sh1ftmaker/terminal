@@ -216,17 +216,17 @@ sudo setfacl -R -d -m u:terminal:rwx /path/to/workspace
 ### Mobile Controls
 
 The key bar sits at the bottom of the terminal, directly above the soft
-keyboard (two rows on a phone, one row in landscape and on desktop):
+keyboard (two rows of ten on a phone, one row in landscape and on desktop):
 
 ```
-esc  tab  ⇧tab  ctrl  alt   /   -   |   ⏎
-^C   compose  paste  copy   ←   ↓   ↑   →   keyboard
+esc  tab  ⇧tab  ctrl  alt   /   -   |   ~   ⏎
+^C   ^B   compose  paste  copy   ←   ↓   ↑   →   keyboard
 ```
 
 - **ctrl / alt**: sticky modifiers. Tap arms one for the next key, double-tap
   locks it, tap again releases. They apply to bar keys (ctrl+arrow,
   alt+enter) and to what you type on the soft keyboard.
-- **esc, tab, ⇧tab, arrows, enter, ^C**: sent immediately; arrows repeat while held.
+- **esc, tab, ⇧tab, arrows, enter, ^C, ^B** (tmux prefix): sent immediately; arrows repeat while held.
 - **compose**: a text field for dictation and long prompts. *Send* types the
   text and presses Enter; *Insert* only types it.
 - **paste / copy**: clipboard paste; copy the selection, or open a plain-text

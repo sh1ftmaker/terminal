@@ -31,7 +31,7 @@ picks below that (4.5 on paper, 3 on charcoal).
   is no font CDN in the loop, and the mono ships with its full glyph set
   (box drawing, arrows, powerline) instead of the Latin subset.
 - **Shape and spacing.** 4px grid, 44px minimum touch targets (key-bar keys
-  are 40px tall, keyboard-style), radii 9/12/16/22. Hairline borders, almost
+  are keyboard-sized: 40px tall, a tenth of the screen wide), radii 9/12/16/22. Hairline borders, almost
   no shadows; elevation is reserved for things that float (sheets, the jump
   pill, the new-session button).
 - **Icons.** Lucide, 1.75–2px stroke, always paired with a label or an
@@ -44,11 +44,12 @@ picks below that (4.5 on paper, 3 on charcoal).
 
 **Thumb-first terminal.** The key bar moved from the top of the screen to the
 bottom edge, directly above the soft keyboard (or the home indicator). Two
-rows of nine on a phone, one row of eighteen in landscape and on desktop:
+rows of ten on a phone — the same grid as the QWERTY row beneath them — and
+one row of twenty in landscape and on desktop:
 
 ```
-esc  tab  ⇧tab  ctrl  alt   /   -   |   ⏎
-^C   compose  paste  copy   ←   ↓   ↑   →   keyboard
+esc  tab  ⇧tab  ctrl  alt   /   -   |   ~   ⏎
+^C   ^B   compose  paste  copy   ←   ↓   ↑   →   keyboard
 ```
 
 - `ctrl` and `alt` are sticky modifiers: tap arms one for the next key,

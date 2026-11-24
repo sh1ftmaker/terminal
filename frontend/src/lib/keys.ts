@@ -8,10 +8,10 @@ export type Mods = Record<ModName, ModState>;
 
 export const NO_MODS: Mods = { ctrl: 'off', alt: 'off' };
 
-export type KeyId = 'esc' | 'tab' | 'backtab' | 'enter' | 'up' | 'down' | 'left' | 'right' | 'slash' | 'dash' | 'pipe' | 'interrupt';
+export type KeyId = 'esc' | 'tab' | 'backtab' | 'enter' | 'up' | 'down' | 'left' | 'right' | 'slash' | 'dash' | 'pipe' | 'tilde' | 'interrupt' | 'prefix';
 
 const ARROWS: Partial<Record<KeyId, string>> = { up: 'A', down: 'B', right: 'C', left: 'D' };
-const CHARS: Partial<Record<KeyId, string>> = { slash: '/', dash: '-', pipe: '|' };
+const CHARS: Partial<Record<KeyId, string>> = { slash: '/', dash: '-', pipe: '|', tilde: '~' };
 
 /** Keys that auto-repeat while held. */
 export const REPEATS: ReadonlySet<KeyId> = new Set<KeyId>(['up', 'down', 'left', 'right']);
@@ -50,6 +50,7 @@ export function encodeKey(id: KeyId, mods: Mods): string {
     case 'backtab': return '\x1b[Z';
     case 'enter': return ctrl ? '\n' : alt ? '\x1b\r' : '\r';
     case 'interrupt': return '\x03';
+    case 'prefix': return '\x02';      // Ctrl+B, tmux's (default / secondary) prefix
     default: return '';
   }
 }

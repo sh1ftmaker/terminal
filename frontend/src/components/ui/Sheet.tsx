@@ -37,9 +37,13 @@ export default function Sheet({ open, onClose, title, subtitle, children, footer
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      // Hand focus back, except to text inputs: refocusing one would pop the
-      // soft keyboard open again behind the closing sheet.
-      if (previous && previous.isConnected && !/^(TEXTAREA|INPUT)$/.test(previous.tagName)) {
+      // Hand focus back. On touch screens not to a text field, though:
+      // refocusing one would pop the soft keyboard open again behind the
+      // closing sheet. With a hardware keyboard that is exactly what is
+      // wanted (close Settings, keep typing in the terminal).
+      const textField = previous ? /^(TEXTAREA|INPUT)$/.test(previous.tagName) : false;
+      const hardwareKeyboard = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+      if (previous && previous.isConnected && (!textField || hardwareKeyboard)) {
         previous.focus({ preventScroll: true });
       }
     };

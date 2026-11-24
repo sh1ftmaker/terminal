@@ -1,15 +1,16 @@
 // On-screen key bar, docked above the soft keyboard: the keys a phone
 // keyboard lacks (Esc, Tab, Ctrl, Alt, arrows) plus the one-tap actions
-// (interrupt, compose, paste, copy, show/hide keyboard).
+// (interrupt, tmux prefix, compose, paste, copy, show/hide keyboard).
 //
-// Two rows of nine on a phone, a single row of eighteen on anything wider.
+// Two rows of ten on a phone — the same grid as the QWERTY row underneath —
+// and a single row of twenty on anything wider.
 //
 // Keys never take focus: pressing one must not dismiss the soft keyboard
 // when it is up, nor summon it when it is down.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ArrowBigUp, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, CornerDownLeft,
+  ArrowBigUp, ArrowDown, ArrowLeft, ArrowRight, ArrowRightToLine, ArrowUp, ClipboardPaste, Copy, CornerDownLeft,
   Keyboard, KeyboardOff, PenLine,
 } from 'lucide-react';
 import { REPEATS, haptic, type KeyId, type ModName, type Mods } from '../lib/keys';
@@ -65,12 +66,14 @@ function Key({ label, title, className, onPress, repeat, onClick, pressed, mod, 
   useEffect(() => stop, [stop]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    // Keep focus (and with it the soft keyboard's state) where it is.
-    e.preventDefault();
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     setDown(true);
     haptic(haptics);
+    // Click-activated keys must leave the gesture alone so the browser still
+    // turns it into a click; the mousedown handler below is what keeps focus
+    // (and with it the soft keyboard's state) where it is.
     if (!onPress) return;
+    e.preventDefault();
     onPressRef.current?.();
     if (repeat) {
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
@@ -120,15 +123,17 @@ export default function KeyBar({ mods, onKey, onModifier, onAction, composeOpen,
       <div className="keybar-grid">
         {key('esc', 'esc', 'Escape')}
         {key('tab', 'tab', 'Tab')}
-        {key('backtab', <span className="inline-flex items-center gap-px"><ArrowBigUp size={13} strokeWidth={2} />tab</span>, 'Shift+Tab')}
+        {key('backtab', <span className="inline-flex items-center"><ArrowBigUp size={13} strokeWidth={2} /><ArrowRightToLine size={14} strokeWidth={2} /></span>, 'Shift+Tab')}
         <Key label="ctrl" title="Control (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('ctrl')} pressed={mods.ctrl !== 'off'} onPress={() => onModifier('ctrl')} />
         <Key label="alt" title="Alt (tap: next key, double-tap: lock)" haptics={haptics} mod={modState('alt')} pressed={mods.alt !== 'off'} onPress={() => onModifier('alt')} />
         {key('slash', <span className="text-[15px]">/</span>, 'Slash')}
         {key('dash', <span className="text-[15px]">-</span>, 'Dash')}
         {key('pipe', <span className="text-[15px]">|</span>, 'Pipe')}
+        {key('tilde', <span className="text-[15px]">~</span>, 'Tilde')}
         {key('enter', <CornerDownLeft {...icon} />, 'Enter')}
 
         {key('interrupt', '^C', 'Interrupt (Ctrl+C)', 'key-danger')}
+        {key('prefix', '^B', 'Ctrl+B (tmux prefix)', 'key-quiet')}
         <Key label={<PenLine {...icon} />} title="Compose: type or dictate, then send" className="key-quiet" haptics={haptics} pressed={composeOpen} onClick={() => onAction('compose')} />
         <Key label={<ClipboardPaste {...icon} />} title="Paste" className="key-quiet" haptics={haptics} onClick={() => onAction('paste')} />
         <Key label={<Copy {...icon} />} title="Copy the selection, or select text" className="key-quiet" haptics={haptics} onClick={() => onAction('copy')} />
