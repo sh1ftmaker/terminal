@@ -5,3 +5,8 @@ dist/
 __pycache__/
 config/*
 !config/contexts.example.json
+
+# Isolated demo instance (scripts/demo)
+demo-workspace/
+
+.shots/
