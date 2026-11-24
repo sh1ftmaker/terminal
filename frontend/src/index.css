@@ -233,6 +233,22 @@ html[data-kb='open'] {
     overflow: hidden;
   }
 
+  /* Installed iOS app: WebKit reports a viewport one status bar shorter than
+     the page really is and clips fixed-position layers to it, which left a
+     blank bar at the bottom. Lay the app out as an ordinary (absolute) box
+     instead, sized by viewport.ts to the full screen. */
+  html[data-standalone] body {
+    position: absolute;
+    inset: auto;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--app-h);
+  }
+  html[data-standalone] #root {
+    position: absolute;
+  }
+
   button {
     font: inherit;
     color: inherit;
@@ -843,9 +859,8 @@ html[data-kb='open'] {
      home indicator (--safe-b is 0 while the keyboard is up). The composer,
      when open, takes the bottom and pads for it instead. */
   .term-pane:not(.composing) {
-    /* Part of the home-indicator inset only: it's a thin line, and the
-       terminal's last row under its edge stays readable. */
-    padding-bottom: calc(var(--safe-b) * 0.35);
+    /* No inset for the home indicator: it's a thin line over the last row,
+       and the terminal runs to the screen's edge. */
     background: var(--term-bg);
   }
 

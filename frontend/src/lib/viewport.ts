@@ -29,17 +29,6 @@ const STANDALONE = typeof window !== 'undefined' && (
   (navigator as Navigator & { standalone?: boolean }).standalone === true
 );
 
-// Height of 100lvh in px, read from a hidden probe element.
-let lvhProbe: HTMLDivElement | null = null;
-function largeViewportHeight(): number {
-  if (!lvhProbe) {
-    lvhProbe = document.createElement('div');
-    lvhProbe.setAttribute('aria-hidden', 'true');
-    lvhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100lvh;visibility:hidden;pointer-events:none;';
-    document.body.appendChild(lvhProbe);
-  }
-  return Math.round(lvhProbe.offsetHeight);
-}
 
 let state: ViewportState = { width: 0, height: 0, keyboardOpen: false };
 const listeners = new Set<() => void>();
@@ -50,6 +39,30 @@ let baseline = 0;
 let baselineWidth = 0;
 let frame = 0;
 let unpanCount = 0;
+// Height of 100lvh in px, read from a hidden probe element.
+let lvhProbe: HTMLDivElement | null = null;
+function largeViewportHeight(): number {
+  if (!lvhProbe) {
+    lvhProbe = document.createElement('div');
+    lvhProbe.setAttribute('aria-hidden', 'true');
+    lvhProbe.style.cssText = 'position:absolute;top:0;left:0;width:0;height:100vh;height:100lvh;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(lvhProbe);
+  }
+  return Math.round(lvhProbe.offsetHeight);
+}
+let wasKeyboardOpen = false;
+
+function refreshViewportMeta(): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (!meta) return;
+  const content = meta.getAttribute('content') || '';
+  meta.setAttribute('content', `${content}, height=device-height`);
+  requestAnimationFrame(() => {
+    meta.setAttribute('content', content);
+    window.scrollTo(0, 0);
+    scheduleSettled();
+  });
+}
 let unpanWindowStart = 0;
 
 function isEditable(el: Element | null): boolean {
@@ -79,11 +92,11 @@ function measure(): void {
   if (!editing) baseline = Math.max(height, window.innerHeight);
 
   const root = document.documentElement;
-  // With the keyboard down, never be shorter than the full viewport. iOS (as
-  // an installed web app) keeps reporting a short visualViewport *and*
-  // innerHeight after the keyboard closes, which left a blank strip at the
-  // bottom. 100lvh isn't affected by the keyboard; it is only trusted when
-  // installed, since in a browser tab it includes the area under the toolbar.
+  // With the keyboard down, never be shorter than the layout viewport. An
+  // installed iOS app (iOS 27) covers the whole screen but reports a
+  // viewport one status bar shorter, so there the full screen (100lvh) is
+  // used; index.css lays the app out unfixed in that mode so WebKit doesn't
+  // clip it to the short viewport.
   const appHeight = keyboardOpen
     ? height
     : Math.max(height, Math.round(window.innerHeight), STANDALONE ? largeViewportHeight() : 0);
@@ -110,6 +123,13 @@ function measure(): void {
     }
   }
   if (!keyboardOpen) unpanCount = 0;
+
+  // Keyboard just closed: an installed iOS app can leave its page shifted up
+  // by the status bar's height (header under the status bar, blank strip at
+  // the bottom) without reporting any scroll. Re-applying the viewport meta
+  // makes WebKit recompute the page area.
+  if (wasKeyboardOpen && !keyboardOpen && STANDALONE) refreshViewportMeta();
+  wasKeyboardOpen = keyboardOpen;
 
   if (width !== state.width || height !== state.height || keyboardOpen !== state.keyboardOpen) {
     state = { width, height, keyboardOpen };
@@ -140,6 +160,7 @@ export function initViewport(): void {
   window.addEventListener('orientationchange', scheduleSettled);
   document.addEventListener('focusin', scheduleSettled);
   document.addEventListener('focusout', scheduleSettled);
+  if (STANDALONE) document.documentElement.dataset.standalone = '1';
   measure();
 }
 
