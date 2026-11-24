@@ -315,10 +315,7 @@ html[data-kb='open'] {
      no matter what the page looks like. */
   .statusbar-pad {
     flex-shrink: 0;
-    /* The inset reserves more than the status bar draws in (on a 62px inset
-       the clock and island end around 48px), so give back 12px; small
-       insets (no notch) are kept whole. */
-    height: max(calc(var(--safe-t) - 12px), min(var(--safe-t), 20px));
+    height: var(--safe-t);
     background: var(--statusbar, var(--bg));
   }
   .statusbar-pad.on-bar {
